@@ -4,6 +4,7 @@
     hprag ask "When was Halcyon commissioned?"
     hprag ask "..." --json                   # full machine-readable result
     hprag eval data/eval/halcyon_qa.jsonl --compare-baseline
+    hprag ui                                 # web app: ask your own questions in the browser
     hprag serve --port 8000                  # REST API (needs hprag[api])
     hprag demo                               # guided tour, no setup needed
 
@@ -122,6 +123,33 @@ def cmd_serve(args) -> None:
     uvicorn.run(create_app(rag), host=args.host, port=args.port, log_config=None)
 
 
+def cmd_ui(args) -> None:
+    """Start the API and open the web UI in the browser.
+
+    Uses --index if it exists, otherwise --corpus, otherwise the bundled demo
+    corpus, so `hprag ui` works with no setup at all.
+    """
+    try:
+        import uvicorn
+    except ImportError:
+        sys.exit("The UI needs extras: pip install -e '.[api]'")
+    import threading
+    import webbrowser
+
+    from hprag.api.server import create_app
+
+    s = _settings(args)
+    corpus = args.corpus
+    if not corpus and not Path(args.index, "meta.json").exists():
+        corpus = str(BUNDLED_CORPUS)
+    rag = _pipeline(s, args.index, corpus)
+    url = f"http://{args.host}:{args.port}"
+    print(f"\n  Hallucination-Proof RAG is running at {url}\n  Press Ctrl+C to stop.\n")
+    if not args.no_browser:
+        threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+    uvicorn.run(create_app(rag), host=args.host, port=args.port, log_config=None)
+
+
 def cmd_demo(args) -> None:
     from hprag.generation import ScriptedGenerator
     from hprag.pipeline import RAGPipeline
@@ -182,6 +210,13 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--host", default="127.0.0.1")
     s.add_argument("--port", type=int, default=8000)
     s.set_defaults(func=cmd_serve)
+
+    s = sub.add_parser("ui", parents=[common], help="open the web UI to ask your own questions")
+    s.add_argument("--corpus", help="documents to load (default: --index if it exists, else the demo corpus)")
+    s.add_argument("--host", default="127.0.0.1")
+    s.add_argument("--port", type=int, default=8000)
+    s.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
+    s.set_defaults(func=cmd_ui)
 
     s = sub.add_parser("demo", parents=[common], help="guided tour on the bundled corpus")
     s.add_argument("--corpus")
