@@ -51,15 +51,18 @@ WARN [c87c6d990dd1] pipeline  repair.dropped  dropped=["The station also carries
 
 | Logger | Event | Level | Key fields |
 |---|---|---|---|
+| `cli` | `config.loaded`, `cli.command` | INFO / DEBUG | `generator`, `verifier`, `embedder`, `reranker`, `min_confidence`, `min_faithfulness`, `command` |
 | `ingest.loader` | `loaded.directory`, `loaded.file`, `skipped.unsupported` | INFO / DEBUG / WARN | `path`, `docs`, `chars` |
 | `ingest.chunker` | `chunked`, `chunked.all` | DEBUG / INFO | `sentences`, `chunks` |
 | `retrieval.bm25` | `built`, `search` | INFO / DEBUG | `vocab`, `terms`, `hits` |
 | `retrieval.dense` | `built` | INFO | `vectors`, `dim`, `embedder` |
+| `retrieval.reranker` | `rerank.done` | DEBUG | `terms`, `top`, `scores` |
 | `retrieval.hybrid` | `index.build.end`, `retrieve.end`, `hit`, `index.saved`, `index.loaded` | INFO / DEBUG | `returned`, `rank`, `bm25`, `dense`, `rrf`, `rerank`, `ms` |
 | `guard.confidence` | `scored` | INFO | `confidence`, `top`, `coverage`, `missing`, `unknown` |
 | `generation` | `llm.request`, `llm.response`, `extractive.picked`, `extractive.abstain` | INFO / DEBUG | `model`, `stop_reason`, `in_tokens`, `out_tokens` |
+| `verification.claims` | `claims.split` | DEBUG | `claims`, `hedges`, `uncited` |
 | `verification` | `claim.checked`, `judge.request`, `judge.refused` | DEBUG / INFO / WARN | `verdict`, `score`, `cited`, `evidence`, `reason` |
-| `pipeline` | `question.received`, `verify.end`, `repair.dropped`, `repair.regenerate.end`, `answer.returned`, `answer.abstained` | INFO / WARN | `faithfulness`, `reason`, timings |
+| `pipeline` | `question.received`, `gate1.passed`, `verify.end`, `repair.dropped`, `repair.regenerate.end`, `answer.returned`, `answer.abstained` | INFO / WARN | `faithfulness`, `reason`, timings |
 | `guardrails` | `guard.blocked`, `guard.pii_input`, `guard.output`, `guard.document_quarantined` | WARN | `guard`, `detail`, `kinds`, `rule`, `sentence` |
 | `pipeline` | `answer.blocked`, `answer.cached`, `documents.added` | WARN / INFO | `guard`, `total_chunks` |
 | `api` | `guard.rate_limited` | WARN | `client`, `retry_after_s` |
