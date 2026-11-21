@@ -71,6 +71,7 @@ class RAGPipeline:
         self.document_guard = DocumentGuard(gr)
         self.cache = QueryCache(gr.cache_size if gr.enabled else 0)
         self.quarantined: list[GuardEvent] = []   # passages kept out of the index, for audit/UI
+        self.last_quarantined: list[GuardEvent] = []
         log.info("pipeline.ready", extra={"generator": self.generator.name,
                                           "verifier": self.s.verifier.kind,
                                           "reranker": self.s.retrieval.reranker})
