@@ -93,6 +93,9 @@ class Answer:
     trace_id: str = "-"
     draft: str | None = None                # the unverified draft, kept for transparency
     timings_ms: dict[str, float] = field(default_factory=dict)
+    guardrails: list[dict[str, str]] = field(default_factory=list)  # guardrail decisions, for the UI
+    blocked_by: str | None = None           # guardrail that refused the request, if any
+    cached: bool = False                    # served from the verified-answer cache
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)

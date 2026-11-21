@@ -66,12 +66,26 @@ class VerifierConfig:
 
 
 @dataclass
+class GuardrailsConfig:
+    enabled: bool = True
+    block_injection: bool = True        # refuse prompt-injection / jailbreak attempts in questions
+    block_unsafe: bool = True           # refuse clearly harmful requests (weapons, cyberattacks, violence)
+    redact_pii: bool = True             # strip emails, phones, cards... from questions and answers
+    mask_profanity: bool = True         # mask offensive words that appear in answers
+    scan_documents: bool = True         # quarantine document passages that try to instruct the AI
+    max_question_chars: int = 500       # long inputs are a common vehicle for injection payloads
+    cache_size: int = 256               # verified answers kept for repeated questions (0 = off)
+    rate_limit_per_minute: int = 60     # API requests per client per minute (0 = off)
+
+
+@dataclass
 class Settings:
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
     guard: GuardConfig = field(default_factory=GuardConfig)
     llm: LLMConfig = field(default_factory=LLMConfig)
     verifier: VerifierConfig = field(default_factory=VerifierConfig)
+    guardrails: GuardrailsConfig = field(default_factory=GuardrailsConfig)
     log_level: str = "INFO"
     log_format: str = "pretty"               # "pretty" | "json"
 
