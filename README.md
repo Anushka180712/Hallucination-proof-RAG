@@ -7,7 +7,7 @@ It answers questions from your own documents. Every sentence in an answer carrie
 [![CI](https://github.com/Anushka180712/hallucination-proof-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/Anushka180712/hallucination-proof-rag/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Tests](https://img.shields.io/badge/tests-41%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-45%20passing-brightgreen)
 
 ---
 
@@ -44,17 +44,43 @@ The trade-off is visible on purpose. The system refused 1 of 20 answerable quest
 ```bash
 git clone https://github.com/Anushka180712/hallucination-proof-rag.git
 cd hallucination-proof-rag
-pip install -e ".[dev]"
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[api]"
 
-hprag demo     # a guided tour of every safety feature
+hprag ui       # opens the web app in your browser at http://127.0.0.1:8000
 ```
 
-The demo shows four cases on the bundled knowledge base:
+![The web UI answering a question with a citation, a fact-check and the highlighted source](docs/images/ui.png)
 
-1. A normal question, answered with a citation.
-2. A question the documents can't answer, refused **before** any AI call is made.
-3. An AI draft with one invented fact. The fact is removed and the rest is kept.
-4. An AI draft that contradicts the sources. The answer is blocked.
+Type any question and you'll see:
+
+- ✅ **Verified answer** or ⛔ **Refused, on purpose**, always with the reason
+- **Clickable citations** `[1]` that jump to the source passage, with the supporting sentence highlighted
+- **Statement-by-statement fact-check**: supported, not found, or contradicted
+- **Retrieval confidence** and **share of statements verified**
+- The **unverified draft**, whenever something was removed from it
+- A **"Try these questions"** list you can click, and an **"Add your own text"** box for asking about your own notes
+
+Stop the server with `Ctrl+C`. Prefer the terminal? `hprag demo` gives a scripted tour instead.
+
+### Questions to try
+
+The bundled knowledge base describes a fictional space station, so every answer has to come from the documents.
+
+| ✅ Should answer | ⛔ Should refuse (not in the documents) |
+|---|---|
+| When was Halcyon commissioned? | Who is the station commander? |
+| How many people are in the permanent crew? | What is the price of a Kestrel capsule? |
+| How much power do the solar arrays generate? | What does the Zephyr telescope observe? |
+| What percentage of water does the Aquifer loop recover? | How many tourists visited Halcyon in 2046? |
+| Who is the chief scientist? | Which rocket launches the Kestrel capsules? |
+| Where does the crew gather during a depressurisation event? | Does Halcyon have a swimming pool? |
+| How long can a spacewalk last? | What is the capital of France? |
+| Are open flames allowed on the station? | |
+| Are Kestrel capsules reusable? | |
+| How do Lumen samples survive re-entry? | |
+
+The full list lives in [`src/hprag/api/static/examples.json`](src/hprag/api/static/examples.json). A test checks that every question in it behaves as labelled.
 
 ### Use your own documents
 
@@ -84,7 +110,7 @@ curl -s localhost:8000/ask -H 'content-type: application/json' \
      -d '{"question": "How often do resupply missions arrive?"}'
 ```
 
-Interactive docs are served at `http://localhost:8000/docs`.
+The web UI is at `http://localhost:8000/` and interactive API docs are at `http://localhost:8000/docs`.
 
 ### Run with Docker
 
@@ -161,8 +187,9 @@ flowchart LR
 - Pluggable providers: offline extractive (cannot hallucinate), Claude (`claude-opus-5-5`), or your own
 - Evaluation harness with hallucination metrics and a naive baseline for comparison
 - Structured logs (readable or JSON) with a trace id per question and timing for every stage
-- CLI (`ingest`, `ask`, `eval`, `serve`, `demo`), REST API, Docker image, GitHub Actions CI
-- 41 tests that run offline in under a second
+- Web UI (`hprag ui`) with citations, per-statement fact-checks and highlighted sources
+- CLI (`ingest`, `ask`, `eval`, `serve`, `ui`, `demo`), REST API, Docker image, GitHub Actions CI
+- 45 tests that run offline in under a second
 - The core install needs only `numpy`
 
 ## ⚙️ Configuration
@@ -196,6 +223,7 @@ src/hprag/
 ├── verification/        # Claim splitting and the four verifiers
 ├── evaluation/          # Metrics, harness and naive baseline
 ├── api/server.py        # FastAPI service
+├── api/static/          # Web UI (one HTML file) and sample questions
 ├── cli.py               # The `hprag` command
 ├── config.py            # Every threshold, with comments
 ├── logging_utils.py     # Structured, trace-aware logging
@@ -204,7 +232,7 @@ src/hprag/
 data/corpus/             # Demo knowledge base (a fictional space station)
 data/eval/               # Labelled questions for evaluation
 docs/                    # Architecture, design decisions, logging guide
-tests/                   # 41 offline tests
+tests/                   # 45 offline tests
 ```
 
 **New to the code?** Read `pipeline.py` from top to bottom. Its docstring has the whole flow, and each step calls into one folder.
@@ -227,7 +255,8 @@ Write a class with a `generate(question, hits, feedback=None) -> str` method and
 
 ```bash
 make install   # pip install -e ".[dev,api,anthropic]"
-make test      # 41 tests, offline
+make test      # 45 tests, offline
+make ui        # open the web UI
 make lint      # ruff
 make eval      # benchmark against the naive baseline
 make demo

@@ -49,7 +49,8 @@ flowchart TB
 | `evaluation/` | Metrics, harness, baseline | `evaluate`, `naive_pipeline` |
 | `logging_utils.py` | Structured logs and trace ids | `configure_logging`, `stage` |
 | `config.py` | Typed settings | `Settings` |
-| `cli.py`, `api/server.py` | Interfaces | `hprag`, `create_app` |
+| `cli.py`, `api/server.py` | Interfaces: CLI and REST API | `hprag`, `create_app` |
+| `api/static/index.html` | Web UI served at `/` (single file, no build step) | `hprag ui` |
 
 Every pluggable part is defined by a small `Protocol` (`Embedder`, `Reranker`, `Generator`, `Verifier`), so implementations can be swapped through configuration without touching the pipeline.
 
