@@ -31,6 +31,7 @@ _PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 
 @dataclass
 class PIIFinding:
+    """One detected item: its kind (EMAIL, PHONE, ...) and character span."""
     kind: str
     start: int
     end: int
@@ -49,6 +50,7 @@ def _luhn_ok(number: str) -> bool:
 
 
 def find_pii(text: str) -> list[PIIFinding]:
+    """Find all PII spans. Earlier patterns win overlaps, so a card is never also read as a phone."""
     found: list[PIIFinding] = []
     taken: list[tuple[int, int]] = []
     for kind, pat in _PATTERNS:  # order matters: cards before phones, so a card isn't read as a phone

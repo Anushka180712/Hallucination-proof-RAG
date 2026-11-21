@@ -87,6 +87,7 @@ def query_terms(text: str) -> list[str]:
 
 
 def ends_with_abbreviation(text: str) -> bool:
+    """True if the text ends with an abbreviation like 'Dr.', so it is not a sentence end."""
     return any(text.endswith(f" {a}.") or text == f"{a}." for a in ABBREVIATIONS)
 
 
@@ -101,6 +102,7 @@ def numbers(text: str) -> set[str]:
 
 
 def has_negation(text: str) -> bool:
+    """True if the text contains a negation word (not, never, no, ...)."""
     return any(t in NEGATIONS for t in tokenize(text))
 
 

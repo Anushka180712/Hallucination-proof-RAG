@@ -36,9 +36,12 @@ log = get_logger("generation")
 
 
 class Generator(Protocol):
+    """Interface every answer generator implements."""
     name: str
 
-    def generate(self, question: str, hits: list[ScoredChunk], feedback: str | None = None) -> str: ...
+    def generate(self, question: str, hits: list[ScoredChunk], feedback: str | None = None) -> str:
+        """Return an answer whose sentences end in [n] citations, or INSUFFICIENT_EVIDENCE."""
+        ...
 
 
 class GenerationRefused(RuntimeError):
@@ -47,6 +50,7 @@ class GenerationRefused(RuntimeError):
 
 # --------------------------------------------------------------------------- extractive
 class ExtractiveGenerator:
+    """Answers by quoting the best-matching source sentences verbatim, so it cannot invent facts."""
     name = "extractive"
 
     def __init__(self, max_sentences: int = 3, min_overlap: float = 0.34, relative: float = 0.75) -> None:
@@ -55,6 +59,7 @@ class ExtractiveGenerator:
         self.relative = relative
 
     def generate(self, question: str, hits: list[ScoredChunk], feedback: str | None = None) -> str:
+        """Score every source sentence by overlap with the question and quote the best ones."""
         q = set(query_terms(question))
         if not q:
             return ABSTAIN_TOKEN
@@ -97,6 +102,7 @@ class ExtractiveGenerator:
 
 # --------------------------------------------------------------------------- scripted
 class ScriptedGenerator:
+    """Returns pre-written answers in order. Used to simulate a hallucinating LLM in tests and demos."""
     name = "scripted"
 
     def __init__(self, answers: list[str] | str) -> None:
@@ -104,6 +110,7 @@ class ScriptedGenerator:
         self.calls = 0
 
     def generate(self, question: str, hits: list[ScoredChunk], feedback: str | None = None) -> str:
+        """Return the next scripted answer (the last one repeats)."""
         ans = self.answers[min(self.calls, len(self.answers) - 1)]
         self.calls += 1
         return ans
@@ -123,6 +130,7 @@ class AnthropicGenerator:
         self.client = client
 
     def generate(self, question: str, hits: list[ScoredChunk], feedback: str | None = None) -> str:
+        """Call Claude with the grounded system prompt; a refusal raises GenerationRefused."""
         prompt = build_user_prompt(question, hits, feedback)
         log.info("llm.request", extra={"model": self.cfg.model, "sources": len(hits),
                                        "prompt_chars": len(prompt), "repair": bool(feedback)})
@@ -150,6 +158,7 @@ class AnthropicGenerator:
 
 
 def make_generator(cfg: LLMConfig) -> Generator:
+    """Build the generator named in the config."""
     if cfg.provider == "anthropic":
         if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")):
             log.warning("anthropic.no_credentials",

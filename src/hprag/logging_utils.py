@@ -48,6 +48,7 @@ def new_trace_id() -> str:
 
 
 def get_trace_id() -> str:
+    """Trace id of the question currently being answered ('-' outside a question)."""
     return _trace_id.get()
 
 

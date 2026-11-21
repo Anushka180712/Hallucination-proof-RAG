@@ -30,6 +30,7 @@ Rules:
 
 
 def format_sources(hits: list[ScoredChunk]) -> str:
+    """Number the chunks [1]..[n] with their document title, as the model will cite them."""
     blocks = []
     for i, h in enumerate(hits, 1):
         title = h.chunk.metadata.get("title", h.chunk.doc_id)
@@ -38,6 +39,7 @@ def format_sources(hits: list[ScoredChunk]) -> str:
 
 
 def build_user_prompt(question: str, hits: list[ScoredChunk], feedback: str | None = None) -> str:
+    """Sources + question, plus verifier feedback when regenerating a failed draft."""
     prompt = f"Sources:\n\n{format_sources(hits)}\n\nQuestion: {question}"
     if feedback:
         # Used by the "regenerate" repair strategy: tell the model exactly which

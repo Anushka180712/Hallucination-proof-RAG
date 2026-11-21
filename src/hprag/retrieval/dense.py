@@ -18,17 +18,20 @@ log = get_logger("retrieval.dense")
 
 
 class DenseIndex:
+    """A matrix of chunk embeddings searched by cosine similarity."""
     def __init__(self, embedder: Embedder) -> None:
         self.embedder = embedder
         self.matrix = np.zeros((0, embedder.dim), dtype=np.float32)
 
     def build(self, texts: list[str]) -> DenseIndex:
+        """Embed every chunk text."""
         self.matrix = self.embedder.embed(texts) if texts else self.matrix
         log.info("built", extra={"vectors": len(self.matrix), "dim": self.embedder.dim,
                                  "embedder": self.embedder.name})
         return self
 
     def search(self, query: str, k: int = 20) -> list[tuple[int, float]]:
+        """Return up to ``k`` (chunk index, cosine) pairs with positive similarity, best first."""
         if len(self.matrix) == 0:
             return []
         q = self.embedder.embed([query])[0]

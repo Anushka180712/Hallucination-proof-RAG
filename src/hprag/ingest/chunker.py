@@ -25,6 +25,7 @@ _SENT_SPAN = re.compile(r"[^.!?\n]+(?:[.!?]+|\n|$)")
 
 
 class SentenceChunker:
+    """Packs whole sentences into chunks of at most ``max_chars``, overlapping by N sentences."""
     def __init__(self, max_chars: int = 600, overlap_sentences: int = 1) -> None:
         if max_chars < 50:
             raise ValueError("max_chars must be >= 50")
@@ -49,6 +50,7 @@ class SentenceChunker:
         return spans
 
     def chunk(self, doc: Document) -> list[Chunk]:
+        """Split one document into chunks with exact character offsets."""
         sents = self._sentences(doc.text)
         chunks: list[Chunk] = []
         i = 0
@@ -79,6 +81,7 @@ class SentenceChunker:
         return chunks
 
     def chunk_all(self, docs: list[Document]) -> list[Chunk]:
+        """Chunk every document."""
         out = [c for d in docs for c in self.chunk(d)]
         log.info("chunked.all", extra={"docs": len(docs), "chunks": len(out)})
         return out

@@ -21,6 +21,7 @@ log = get_logger("retrieval.bm25")
 
 
 class BM25Index:
+    """Okapi BM25 over stemmed content words."""
     def __init__(self, k1: float = 1.5, b: float = 0.75) -> None:
         # k1 controls term-frequency saturation; b controls length normalisation.
         # 1.5 / 0.75 are the textbook defaults and work well on prose.
@@ -32,6 +33,7 @@ class BM25Index:
         self._avgdl = 0.0
 
     def build(self, chunks: list[Chunk]) -> BM25Index:
+        """Compute term frequencies, document frequencies and average length for the chunks."""
         self.chunks = list(chunks)
         self._tf = [Counter(content_terms(c.text)) for c in self.chunks]
         self._len = [sum(tf.values()) for tf in self._tf]
@@ -41,11 +43,13 @@ class BM25Index:
         return self
 
     def idf(self, term: str) -> float:
+        """Inverse document frequency: high for rare words, which carry the most meaning."""
         n, df = len(self.chunks), self._df.get(term, 0)
         # The "+1" variant keeps IDF positive even for very common terms.
         return math.log(1 + (n - df + 0.5) / (df + 0.5))
 
     def search(self, query: str, k: int = 20) -> list[tuple[int, float]]:
+        """Return up to ``k`` (chunk index, score) pairs with a positive score, best first."""
         terms = query_terms(query)
         if not terms or not self.chunks:
             return []

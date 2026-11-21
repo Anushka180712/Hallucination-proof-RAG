@@ -35,6 +35,7 @@ log = get_logger("retrieval.hybrid")
 
 
 def rrf(rankings: dict[str, list[tuple[int, float]]], k: int = 60) -> dict[int, float]:
+    """Reciprocal Rank Fusion: each list adds 1 / (k + rank) for every item it contains."""
     fused: dict[int, float] = {}
     for hits in rankings.values():
         for rank, (idx, _score) in enumerate(hits, start=1):
@@ -43,6 +44,7 @@ def rrf(rankings: dict[str, list[tuple[int, float]]], k: int = 60) -> dict[int, 
 
 
 class HybridRetriever:
+    """BM25 + dense retrieval, fused with RRF and reranked; can save and load itself."""
     def __init__(self, cfg: RetrievalConfig | None = None) -> None:
         self.cfg = cfg or RetrievalConfig()
         self.chunks: list[Chunk] = []
@@ -52,6 +54,7 @@ class HybridRetriever:
 
     # ------------------------------------------------------------------ building
     def build(self, chunks: list[Chunk]) -> HybridRetriever:
+        """Build both indexes and the reranker for these chunks."""
         with stage("index.build", log, chunks=len(chunks)):
             self.chunks = list(chunks)
             self.bm25.build(self.chunks)
@@ -71,6 +74,7 @@ class HybridRetriever:
 
     # ----------------------------------------------------------------- searching
     def retrieve(self, query: str, top_k: int | None = None) -> list[ScoredChunk]:
+        """Return the top-k chunks for a query, each with all its intermediate scores."""
         top_k = top_k or self.cfg.top_k
         with stage("retrieve", log, query=query) as out:
             lexical = self.bm25.search(query, self.cfg.candidate_k)
@@ -95,13 +99,16 @@ class HybridRetriever:
         return ranked
 
     def idf(self, term: str) -> float:
+        """BM25 IDF of a stemmed term (used by Gate 1 and the lexical verifier)."""
         return self.bm25.idf(term)
 
     def in_vocab(self, term: str) -> bool:
+        """Whether the corpus contains this stemmed term at all."""
         return term in self.bm25._df
 
     # --------------------------------------------------------------- persistence
     def save(self, path: str | Path) -> None:
+        """Write chunks, vectors and config to a directory."""
         p = Path(path)
         p.mkdir(parents=True, exist_ok=True)
         with open(p / "chunks.jsonl", "w", encoding="utf-8") as f:
@@ -114,6 +121,7 @@ class HybridRetriever:
 
     @classmethod
     def load(cls, path: str | Path, cfg: RetrievalConfig | None = None) -> HybridRetriever:
+        """Load a saved index, refusing if it was built with a different embedder."""
         p = Path(path)
         meta = json.loads((p / "meta.json").read_text())
         saved = RetrievalConfig(**meta["retrieval"])

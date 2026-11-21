@@ -23,12 +23,14 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 uses the identical
 
 @dataclass
 class ChunkingConfig:
+    """How documents are split into retrievable chunks."""
     max_chars: int = 600       # small enough that one chunk ~ one topic, so citations stay precise
     overlap_sentences: int = 1  # carry one sentence across boundaries so facts aren't cut in half
 
 
 @dataclass
 class RetrievalConfig:
+    """Which retrievers and rerankers run, and how many candidates each returns."""
     top_k: int = 5              # chunks handed to the generator (more = more noise to hallucinate from)
     candidate_k: int = 20       # chunks fetched from each retriever before fusion/reranking
     rrf_k: int = 60             # Reciprocal Rank Fusion constant (60 is the value from the original paper)
@@ -41,6 +43,7 @@ class RetrievalConfig:
 @dataclass
 class GuardConfig:
     # --- Gate 1: before generation -------------------------------------------------
+    """Hallucination gates: the thresholds that decide answer vs. abstain."""
     min_retrieval_confidence: float = 0.35   # below this, abstain without calling the LLM at all
     # --- Gate 2: after verification ------------------------------------------------
     min_claim_support: float = 0.55          # a claim needs at least this support score to count as supported
@@ -52,6 +55,7 @@ class GuardConfig:
 
 @dataclass
 class LLMConfig:
+    """Which answer generator runs, and its model settings."""
     provider: str = "extractive"             # "extractive" (offline, cannot hallucinate) | "anthropic"
     model: str = "claude-opus-5-5"           # latest Claude Opus; override with HPRAG_LLM_MODEL
     max_tokens: int = 2048
@@ -60,6 +64,7 @@ class LLMConfig:
 
 @dataclass
 class VerifierConfig:
+    """Which claim verifier checks the generated answer."""
     kind: str = "lexical"                    # "lexical" (offline) | "nli" | "llm" | "ensemble"
     nli_model: str = "cross-encoder/nli-deberta-v3-small"
     judge_model: str = "claude-opus-5-5"
@@ -67,6 +72,7 @@ class VerifierConfig:
 
 @dataclass
 class GuardrailsConfig:
+    """Request, document and output guardrails (see hprag.guardrails)."""
     enabled: bool = True
     block_injection: bool = True        # refuse prompt-injection / jailbreak attempts in questions
     block_unsafe: bool = True           # refuse clearly harmful requests (weapons, cyberattacks, violence)
@@ -80,6 +86,7 @@ class GuardrailsConfig:
 
 @dataclass
 class Settings:
+    """Root of all configuration. Build with ``Settings.load(...)``."""
     chunking: ChunkingConfig = field(default_factory=ChunkingConfig)
     retrieval: RetrievalConfig = field(default_factory=RetrievalConfig)
     guard: GuardConfig = field(default_factory=GuardConfig)
@@ -91,6 +98,7 @@ class Settings:
 
     @classmethod
     def load(cls, path: str | Path | None = None, env: dict[str, str] | None = None) -> Settings:
+        """Defaults, then the TOML file (if given), then ``HPRAG_*`` environment variables."""
         s = cls()
         if path:
             with open(path, "rb") as f:

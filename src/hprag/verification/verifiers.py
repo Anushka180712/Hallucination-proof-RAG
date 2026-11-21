@@ -48,9 +48,12 @@ ANTONYMS.update({v: k for k, v in list(ANTONYMS.items())})
 
 
 class Verifier(Protocol):
+    """Interface every claim verifier implements."""
     name: str
 
-    def verify(self, claims: list[Claim], sources: list[str], threshold: float) -> list[Claim]: ...
+    def verify(self, claims: list[Claim], sources: list[str], threshold: float) -> list[Claim]:
+        """Set verdict, score, evidence, citation_valid and reason on every claim; return them."""
+        ...
 
 
 def _premises(source: str) -> list[str]:
@@ -66,6 +69,7 @@ def _premises(source: str) -> list[str]:
 
 # --------------------------------------------------------------------------- lexical
 class LexicalVerifier:
+    """Offline verifier: term coverage plus number, negation and antonym checks."""
     name = "lexical"
 
     def __init__(self, idf: Callable[[str], float] | None = None) -> None:
@@ -101,6 +105,7 @@ class LexicalVerifier:
         return round(coverage, 4), False, reason
 
     def verify(self, claims: list[Claim], sources: list[str], threshold: float) -> list[Claim]:
+        """Compare each claim with every sentence (and sentence pair) of every source."""
         for claim in claims:
             best, best_reason, support, contra = 0.0, "no evidence", [], None
             for n, src in enumerate(sources, 1):
@@ -123,6 +128,7 @@ class LexicalVerifier:
 
 # --------------------------------------------------------------------------- NLI
 class NLIVerifier:  # pragma: no cover - needs model download
+    """Natural Language Inference cross-encoder: entailment / contradiction / neutral."""
     def __init__(self, model: str) -> None:
         from sentence_transformers import CrossEncoder
 
@@ -134,6 +140,7 @@ class NLIVerifier:  # pragma: no cover - needs model download
         self._idx = {v.lower(): int(k) for k, v in labels.items()}
 
     def verify(self, claims: list[Claim], sources: list[str], threshold: float) -> list[Claim]:
+        """Run NLI for every (premise, claim) pair and keep the strongest evidence."""
         for claim in claims:
             pairs = [(n, p) for n, s in enumerate(sources, 1) for p in _premises(s)]
             logits = self._model.predict([(p, claim.text) for _, p in pairs])
@@ -183,6 +190,7 @@ JUDGE_SCHEMA = {
 
 
 class LLMJudgeVerifier:
+    """Claude as a strict fact-checker, returning schema-validated JSON verdicts."""
     def __init__(self, model: str = "claude-opus-5-5", client=None) -> None:
         self.name = f"llm:{model}"
         self.model = model
@@ -193,6 +201,7 @@ class LLMJudgeVerifier:
         self.client = client
 
     def verify(self, claims: list[Claim], sources: list[str], threshold: float) -> list[Claim]:
+        """Judge all claims in one call; fail closed (unsupported) if the judge refuses."""
         if not claims:
             return claims
         src = "\n\n".join(f"[{i}] {s}" for i, s in enumerate(sources, 1))
@@ -233,6 +242,7 @@ class EnsembleVerifier:
         self.name = "ensemble(" + ",".join(m.name for m in members) + ")"
 
     def verify(self, claims: list[Claim], sources: list[str], threshold: float) -> list[Claim]:
+        """Run every member; supported only if all agree, and any contradiction wins."""
         runs = []
         for m in self.members:
             copies = [Claim(text=c.text, cited=list(c.cited)) for c in claims]
@@ -266,6 +276,7 @@ def _finalise(claim: Claim, best: float, support: list[int], contra: str | None,
 
 
 def make_verifier(cfg: VerifierConfig, idf: Callable[[str], float] | None = None) -> Verifier:
+    """Build the verifier named in the config."""
     if cfg.kind == "lexical":
         return LexicalVerifier(idf)
     if cfg.kind == "nli":

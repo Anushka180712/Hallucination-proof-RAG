@@ -27,10 +27,13 @@ log = get_logger("retrieval.embeddings")
 
 
 class Embedder(Protocol):
+    """Interface: turn texts into L2-normalised vectors of size ``dim``."""
     name: str
     dim: int
 
-    def embed(self, texts: list[str]) -> np.ndarray: ...
+    def embed(self, texts: list[str]) -> np.ndarray:
+        """Return an array of shape (len(texts), dim)."""
+        ...
 
 
 def _h(s: str) -> int:
@@ -40,6 +43,7 @@ def _h(s: str) -> int:
 
 
 class HashingEmbedder:
+    """Feature-hashed word, bigram and character-trigram vectors: offline and deterministic."""
     name = "hashing"
 
     def __init__(self, dim: int = 1024) -> None:
@@ -55,6 +59,7 @@ class HashingEmbedder:
         return feats
 
     def embed(self, texts: list[str]) -> np.ndarray:
+        """Hash each feature into a signed bucket, then L2-normalise each row."""
         out = np.zeros((len(texts), self.dim), dtype=np.float32)
         for row, text in enumerate(texts):
             for feat, weight in self._features(text):
@@ -66,6 +71,7 @@ class HashingEmbedder:
 
 
 class SentenceTransformerEmbedder:  # pragma: no cover - needs model download
+    """A neural embedding model from sentence-transformers (needs hprag[ml])."""
     def __init__(self, model: str) -> None:
         from sentence_transformers import SentenceTransformer
 
@@ -75,10 +81,12 @@ class SentenceTransformerEmbedder:  # pragma: no cover - needs model download
         log.info("loaded", extra={"model": model, "dim": self.dim})
 
     def embed(self, texts: list[str]) -> np.ndarray:
+        """Encode with the neural model, normalised for cosine search."""
         return np.asarray(self._model.encode(texts, normalize_embeddings=True), dtype=np.float32)
 
 
 def make_embedder(kind: str, model: str = "") -> Embedder:
+    """Build the embedder named in the config."""
     if kind == "hashing":
         return HashingEmbedder()
     if kind in ("sentence-transformers", "st"):

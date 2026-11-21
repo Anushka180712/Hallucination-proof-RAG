@@ -54,6 +54,11 @@ BLOCKED_MESSAGE = ("I can't help with that request. I answer questions about the
 
 
 class RAGPipeline:
+    """The whole system: guardrails around retrieval, gates, generation, verification and repair.
+
+    Every component can be injected (retriever, generator, verifier), which is
+    how tests swap in a scripted generator without touching anything else.
+    """
     def __init__(
         self,
         settings: Settings | None = None,
@@ -80,11 +85,13 @@ class RAGPipeline:
     @property
     def verifier(self) -> Verifier:
         # Built lazily because the lexical verifier needs IDF stats from the index.
+        """The configured claim verifier, built on first use."""
         if self._verifier is None:
             self._verifier = make_verifier(self.s.verifier, self.retriever.idf)
         return self._verifier
 
     def ingest_documents(self, docs: list[Document]) -> int:
+        """Replace the index with these documents (after the document guardrail)."""
         chunker = SentenceChunker(self.s.chunking.max_chars, self.s.chunking.overlap_sentences)
         docs, self.quarantined = self._screen(docs)
         chunks = chunker.chunk_all(docs)
@@ -123,6 +130,7 @@ class RAGPipeline:
         return len(new_chunks)
 
     def ingest_path(self, path: str) -> int:
+        """Load a file or directory from disk and index it, replacing the current index."""
         return self.ingest_documents(load_directory(path))
 
     # -------------------------------------------------------------------- answering

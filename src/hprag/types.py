@@ -70,6 +70,7 @@ class Claim:
 
 @dataclass
 class Citation:
+    """A source shown to the user: its number in the answer, where it came from, and the text."""
     number: int
     chunk_id: str
     doc_id: str
@@ -98,6 +99,7 @@ class Answer:
     cached: bool = False                    # served from the verified-answer cache
 
     def to_dict(self) -> dict[str, Any]:
+        """JSON-serialisable form (enums become strings), as returned by the API."""
         d = asdict(self)
         for c in d["claims"]:
             c["verdict"] = c["verdict"].value if isinstance(c["verdict"], Verdict) else c["verdict"]

@@ -28,19 +28,25 @@ log = get_logger("retrieval.reranker")
 
 
 class Reranker(Protocol):
+    """Interface: reorder candidate chunks for one query, setting ``scores['rerank']``."""
     name: str
 
-    def rerank(self, query: str, hits: list[ScoredChunk]) -> list[ScoredChunk]: ...
+    def rerank(self, query: str, hits: list[ScoredChunk]) -> list[ScoredChunk]:
+        """Return the hits re-sorted by relevance to the query."""
+        ...
 
 
 class NoReranker:
+    """Keeps the fused order unchanged."""
     name = "none"
 
     def rerank(self, query: str, hits: list[ScoredChunk]) -> list[ScoredChunk]:
+        """Return hits unchanged."""
         return hits
 
 
 class LexicalReranker:
+    """IDF-weighted query coverage plus a proximity bonus. Offline and explainable."""
     name = "lexical"
 
     def __init__(self, idf: dict[str, float] | None = None) -> None:
@@ -64,6 +70,7 @@ class LexicalReranker:
         return 0.8 * coverage + 0.2 * min(1.0, proximity)
 
     def rerank(self, query: str, hits: list[ScoredChunk]) -> list[ScoredChunk]:
+        """Score each hit in [0, 1] and sort, best first."""
         q_terms = query_terms(query)
         for h in hits:
             h.scores["rerank"] = round(self._score(q_terms, h.chunk.text), 4)
@@ -73,6 +80,7 @@ class LexicalReranker:
 
 
 class CrossEncoderReranker:  # pragma: no cover - needs model download
+    """Neural cross-encoder that reads query and passage together (needs hprag[ml])."""
     def __init__(self, model: str) -> None:
         from sentence_transformers import CrossEncoder
 
@@ -80,6 +88,7 @@ class CrossEncoderReranker:  # pragma: no cover - needs model download
         self._model = CrossEncoder(model)
 
     def rerank(self, query: str, hits: list[ScoredChunk]) -> list[ScoredChunk]:
+        """Score each (query, passage) pair, squash logits to [0, 1], sort."""
         if not hits:
             return hits
         raw = self._model.predict([(query, h.chunk.text) for h in hits])

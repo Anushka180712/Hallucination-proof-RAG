@@ -33,6 +33,7 @@ log = get_logger("guard.confidence")
 
 @dataclass
 class ConfidenceReport:
+    """Gate 1's score and the evidence behind it, so an abstention can explain itself."""
     confidence: float
     top_score: float
     coverage: float
@@ -41,6 +42,11 @@ class ConfidenceReport:
 
 
 def retrieval_confidence(query: str, hits: list[ScoredChunk], idf, in_vocab) -> ConfidenceReport:
+    """Score how well the retrieved chunks cover the question (see module docstring).
+
+    ``idf`` and ``in_vocab`` come from the BM25 index, so rare words weigh more
+    and words the corpus has never seen can be detected.
+    """
     q_terms = list(dict.fromkeys(query_terms(query)))
     if not hits or not q_terms:
         return ConfidenceReport(0.0, 0.0, 0.0, missing_terms=q_terms)

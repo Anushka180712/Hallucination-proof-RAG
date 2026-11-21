@@ -82,6 +82,7 @@ PROFANITY = re.compile(r"\b(fuck\w*|shit\w*|bitch\w*|bastard\w*|asshole\w*|cunt\
 
 
 def first_match(text: str, patterns: list[tuple[str, re.Pattern[str]]]) -> tuple[str, str] | None:
+    """Return (rule name, matched text) for the first pattern that matches, else None."""
     for name, pat in patterns:
         m = pat.search(text)
         if m:

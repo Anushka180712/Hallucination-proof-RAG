@@ -79,6 +79,7 @@ def _print_answer(a, as_json: bool) -> None:
 
 
 def cmd_ingest(args) -> None:
+    """`hprag ingest PATH`: chunk and index documents, then save the index to disk."""
     from hprag.pipeline import RAGPipeline
 
     s = _settings(args)
@@ -89,12 +90,14 @@ def cmd_ingest(args) -> None:
 
 
 def cmd_ask(args) -> None:
+    """`hprag ask QUESTION`: answer one question and print the answer, verdicts and sources."""
     s = _settings(args)
     rag = _pipeline(s, args.index, args.corpus)
     _print_answer(rag.ask(args.question), args.json)
 
 
 def cmd_eval(args) -> None:
+    """`hprag eval DATASET`: run the evaluation harness, optionally against the naive baseline."""
     from hprag.evaluation import evaluate, format_report, load_dataset
     from hprag.evaluation.baseline import naive_pipeline
 
@@ -112,6 +115,7 @@ def cmd_eval(args) -> None:
 
 
 def cmd_serve(args) -> None:
+    """`hprag serve`: start the REST API (and the UI at /) without opening a browser."""
     try:
         import uvicorn
     except ImportError:
@@ -151,6 +155,7 @@ def cmd_ui(args) -> None:
 
 
 def cmd_demo(args) -> None:
+    """`hprag demo`: a scripted terminal tour showing each safety mechanism once."""
     from hprag.generation import ScriptedGenerator
     from hprag.pipeline import RAGPipeline
 
@@ -178,6 +183,7 @@ def cmd_demo(args) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Define all sub-commands and the options they share."""
     p = argparse.ArgumentParser(prog="hprag", description="Hallucination-proof RAG")
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--config", help="TOML config file")
@@ -225,6 +231,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
+    """Entry point for the `hprag` console script."""
     args = build_parser().parse_args(argv)
     args.func(args)
 

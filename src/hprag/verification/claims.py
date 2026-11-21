@@ -27,6 +27,7 @@ _HEDGE = re.compile(
 
 
 def is_hedge(sentence: str) -> bool:
+    """True if the sentence is about the evidence ('the sources do not say ...'), not the world."""
     return bool(_HEDGE.search(sentence))
 
 

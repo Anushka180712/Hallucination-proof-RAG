@@ -34,20 +34,28 @@ STATIC = Path(__file__).parent / "static"
 
 
 class AskRequest(BaseModel):
+    """Body of POST /ask. The length cap is a cheap first defence against oversized payloads."""
     question: str = Field(..., min_length=1, max_length=2000)
 
 
 class DocIn(BaseModel):
+    """One document to index: a unique id (also used as its title) and its text."""
     id: str
     text: str
     metadata: dict = Field(default_factory=dict)
 
 
 class IngestRequest(BaseModel):
+    """Body of POST /ingest and POST /documents: one or more documents."""
     documents: list[DocIn] = Field(..., min_length=1)
 
 
 def create_app(rag: RAGPipeline) -> FastAPI:
+    """Build the FastAPI app around an existing pipeline.
+
+    The pipeline is passed in (not created here) so the CLI, tests and Docker
+    image can each configure it their own way and share one app factory.
+    """
     app = FastAPI(
         title="Hallucination-Proof RAG",
         version="1.2.0",
@@ -59,6 +67,7 @@ def create_app(rag: RAGPipeline) -> FastAPI:
     limiter = RateLimiter(gr.rate_limit_per_minute if gr.enabled else 0)
 
     def check_rate(request: Request) -> None:
+        """Apply the per-client rate limit; raise HTTP 429 with Retry-After when exceeded."""
         client = request.client.host if request.client else "unknown"
         ok, wait = limiter.allow(client)
         if not ok:
@@ -69,20 +78,24 @@ def create_app(rag: RAGPipeline) -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     def ui() -> FileResponse:
+        """Serve the single-file web UI."""
         return FileResponse(STATIC / "index.html")
 
     @app.get("/examples")
     def examples() -> dict:
+        """Return the grouped sample questions shown in the UI (and checked by a test)."""
         return json.loads((STATIC / "examples.json").read_text(encoding="utf-8"))
 
     @app.get("/health")
     def health() -> dict:
+        """Liveness probe plus a summary of what the server is running with."""
         return {"status": "ok", "chunks": len(rag.retriever.chunks),
                 "generator": rag.generator.name, "verifier": rag.verifier.name,
                 "guardrails": gr.enabled, "quarantined": len(rag.quarantined)}
 
     @app.get("/guardrails")
     def guardrails() -> dict:
+        """List every guardrail, whether it is on, and what it protects against."""
         active = {
             "prompt_injection": gr.block_injection, "unsafe_request": gr.block_unsafe,
             "self_harm": gr.block_unsafe, "invalid_input": True, "pii_input": gr.redact_pii,
@@ -99,6 +112,7 @@ def create_app(rag: RAGPipeline) -> FastAPI:
 
     @app.post("/ask")
     def ask(req: AskRequest, request: Request):
+        """Answer one question through guardrails and the hallucination-proof core."""
         check_rate(request)
         if not rag.retriever.chunks:
             raise HTTPException(409, "Index is empty: POST /ingest first")
@@ -108,6 +122,7 @@ def create_app(rag: RAGPipeline) -> FastAPI:
 
     @app.post("/documents")
     def add_documents(req: IngestRequest, request: Request) -> dict:
+        """Add documents to the existing index (same id replaces the old version)."""
         check_rate(request)
         docs = [Document(doc_id=d.id, text=d.text, metadata={"title": d.id, **d.metadata})
                 for d in req.documents]
@@ -118,6 +133,7 @@ def create_app(rag: RAGPipeline) -> FastAPI:
 
     @app.post("/ingest")
     def ingest(req: IngestRequest) -> dict:
+        """Replace the whole index with the given documents."""
         docs = [Document(doc_id=d.id, text=d.text, metadata={"title": d.id, **d.metadata})
                 for d in req.documents]
         with lock:

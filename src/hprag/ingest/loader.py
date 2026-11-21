@@ -20,6 +20,7 @@ TEXT_SUFFIXES = {".txt", ".md", ".markdown", ".rst"}
 
 
 def load_file(path: str | Path) -> list[Document]:
+    """Load one file. ``.jsonl`` gives one document per line; text formats give one document."""
     p = Path(path)
     if p.suffix == ".jsonl":
         # One {"id": ..., "text": ..., ...metadata} object per line.
@@ -43,6 +44,7 @@ def load_file(path: str | Path) -> list[Document]:
 
 
 def load_directory(path: str | Path) -> list[Document]:
+    """Load every supported file under a directory (or a single file), in sorted order."""
     root = Path(path)
     if root.is_file():
         return load_file(root)

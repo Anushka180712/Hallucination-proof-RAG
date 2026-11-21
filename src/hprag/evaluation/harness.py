@@ -50,6 +50,7 @@ log = get_logger("evaluation")
 
 @dataclass
 class EvalItem:
+    """One labelled question from the dataset."""
     id: str
     question: str
     answerable: bool
@@ -59,6 +60,7 @@ class EvalItem:
 
 @dataclass
 class ItemResult:
+    """What happened to one question, with everything the metrics need."""
     id: str
     question: str
     answerable: bool
@@ -77,17 +79,20 @@ class ItemResult:
 
 @dataclass
 class EvalReport:
+    """All results for one pipeline configuration, plus the aggregated metrics."""
     name: str
     n: int
     metrics: dict[str, float]
     items: list[ItemResult]
 
     def to_dict(self) -> dict[str, Any]:
+        """JSON-serialisable form, used for ``hprag eval --out``."""
         return {"name": self.name, "n": self.n, "metrics": self.metrics,
                 "items": [asdict(i) for i in self.items]}
 
 
 def load_dataset(path: str | Path) -> list[EvalItem]:
+    """Read a JSONL evaluation set (one EvalItem per line)."""
     items = []
     for line in Path(path).read_text(encoding="utf-8").splitlines():
         if line.strip():
@@ -101,6 +106,7 @@ def _contains_all(answer: str, facts: list[str]) -> bool:
 
 
 def evaluate(pipeline: RAGPipeline, items: list[EvalItem], name: str = "pipeline") -> EvalReport:
+    """Run every item through the pipeline, score it, and return a report."""
     results: list[ItemResult] = []
     for it in items:
         t0 = time.perf_counter()
@@ -141,6 +147,7 @@ def _ratio(a: float, b: float) -> float:
 
 
 def compute_metrics(rs: list[ItemResult]) -> dict[str, float]:
+    """Aggregate item results into the metrics described in the module docstring."""
     ans = [r for r in rs if r.answerable]
     unans = [r for r in rs if not r.answerable]
     answered = [r for r in rs if not r.abstained]

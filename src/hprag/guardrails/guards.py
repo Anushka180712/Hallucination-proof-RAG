@@ -54,6 +54,7 @@ EXPLANATIONS = {
 
 @dataclass
 class GuardEvent:
+    """One guardrail decision, carried to the UI and the logs."""
     guard: str          # e.g. "prompt_injection"
     action: str         # "blocked" | "redacted" | "flagged" | "quarantined" | "cached"
     detail: str         # what exactly fired, e.g. the rule name and matched text
@@ -65,6 +66,7 @@ class GuardEvent:
 
 @dataclass
 class InputDecision:
+    """Result of checking a question: the (possibly redacted) text, events, and any block."""
     question: str                      # possibly redacted
     events: list[GuardEvent] = field(default_factory=list)
     blocked: GuardEvent | None = None
@@ -72,10 +74,12 @@ class InputDecision:
 
 
 class InputGuard:
+    """Checks a question before anything else runs. Order: validation, wellbeing, injection, harm, PII."""
     def __init__(self, cfg: GuardrailsConfig) -> None:
         self.cfg = cfg
 
     def check(self, question: str) -> InputDecision:
+        """Return a decision. A block stops the pipeline; a redaction lets it continue."""
         q = question.strip()
         d = InputDecision(question=q)
 
@@ -139,6 +143,7 @@ class DocumentGuard:
         self.cfg = cfg
 
     def scan(self, docs: list[Document]) -> tuple[list[Document], list[GuardEvent]]:
+        """Return documents with planted instructions blanked out, plus one event per removal."""
         if not self.cfg.scan_documents:
             return docs, []
         out, events = [], []
@@ -159,10 +164,12 @@ class DocumentGuard:
 
 
 class OutputGuard:
+    """Masks personal information and profanity in text that is about to be shown."""
     def __init__(self, cfg: GuardrailsConfig) -> None:
         self.cfg = cfg
 
     def apply(self, text: str) -> tuple[str, list[GuardEvent]]:
+        """Return the masked text and the events describing what was masked."""
         events = []
         if self.cfg.redact_pii:
             text, kinds = redact(text)
@@ -195,10 +202,12 @@ class QueryCache:
         self.version = 0
 
     def key(self, question: str) -> tuple | None:
+        """Cache key: index version + sorted stemmed content words (None if there are none)."""
         terms = tuple(sorted(set(query_terms(question))))
         return (self.version, terms) if terms else None
 
     def get(self, question: str):
+        """Return the cached answer for an equivalent question, or None."""
         k = self.key(question)
         if k is None or self.size <= 0:
             return None
@@ -209,6 +218,7 @@ class QueryCache:
         return None
 
     def put(self, question: str, value) -> None:
+        """Store a verified answer, evicting the least recently used entry when full."""
         k = self.key(question)
         if k is None or self.size <= 0:
             return
@@ -219,6 +229,7 @@ class QueryCache:
                 self._data.popitem(last=False)
 
     def invalidate(self) -> None:
+        """Drop everything; called whenever the documents change."""
         with self._lock:
             self._data.clear()
             self.version += 1
