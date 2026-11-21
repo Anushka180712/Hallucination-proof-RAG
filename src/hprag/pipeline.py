@@ -31,11 +31,15 @@ output meets an explicit, configurable faithfulness bar.
 
 from __future__ import annotations
 
+import copy
+import re
 import time
+from dataclasses import asdict
 
 from hprag.confidence import retrieval_confidence
 from hprag.config import Settings
 from hprag.generation import ABSTAIN_TOKEN, GenerationRefused, Generator, make_generator
+from hprag.guardrails import DocumentGuard, GuardEvent, InputGuard, OutputGuard, QueryCache
 from hprag.ingest import SentenceChunker, load_directory
 from hprag.logging_utils import get_logger, new_trace_id, stage
 from hprag.retrieval import HybridRetriever
@@ -45,6 +49,8 @@ from hprag.verification import Verifier, decompose, make_verifier
 log = get_logger("pipeline")
 
 ABSTAIN_MESSAGE = "I don't have enough reliable evidence in the knowledge base to answer that."
+BLOCKED_MESSAGE = ("I can't help with that request. I answer questions about the documents in my "
+                   "knowledge base, using only what they say.")
 
 
 class RAGPipeline:
@@ -59,6 +65,12 @@ class RAGPipeline:
         self.retriever = retriever or HybridRetriever(self.s.retrieval)
         self.generator = generator or make_generator(self.s.llm)
         self._verifier = verifier
+        gr = self.s.guardrails
+        self.input_guard = InputGuard(gr)
+        self.output_guard = OutputGuard(gr)
+        self.document_guard = DocumentGuard(gr)
+        self.cache = QueryCache(gr.cache_size if gr.enabled else 0)
+        self.quarantined: list[GuardEvent] = []   # passages kept out of the index, for audit/UI
         log.info("pipeline.ready", extra={"generator": self.generator.name,
                                           "verifier": self.s.verifier.kind,
                                           "reranker": self.s.retrieval.reranker})
@@ -73,10 +85,18 @@ class RAGPipeline:
 
     def ingest_documents(self, docs: list[Document]) -> int:
         chunker = SentenceChunker(self.s.chunking.max_chars, self.s.chunking.overlap_sentences)
+        docs, self.quarantined = self._screen(docs)
         chunks = chunker.chunk_all(docs)
         self.retriever.build(chunks)
         self._verifier = None
+        self.cache.invalidate()
         return len(chunks)
+
+    def _screen(self, docs: list[Document]) -> tuple[list[Document], list[GuardEvent]]:
+        """Run the document guardrail (indirect prompt-injection scan) before chunking."""
+        if not self.s.guardrails.enabled:
+            return docs, []
+        return self.document_guard.scan(docs)
 
     def add_documents(self, docs: list[Document]) -> int:
         """Add documents to the existing index instead of replacing it.
@@ -89,9 +109,14 @@ class RAGPipeline:
         new_ids = {d.doc_id for d in docs}
         # Re-adding a document with the same id replaces its old version.
         kept = [c for c in self.retriever.chunks if c.doc_id not in new_ids]
+        docs, flagged = self._screen(docs)
         new_chunks = chunker.chunk_all(docs)
+        self.quarantined = [e for e in self.quarantined
+                            if e.detail.split(":")[0] not in new_ids] + flagged
+        self.last_quarantined = flagged
         self.retriever.build(kept + new_chunks)
         self._verifier = None
+        self.cache.invalidate()
         log.info("documents.added", extra={"docs": len(docs), "new_chunks": len(new_chunks),
                                            "total_chunks": len(self.retriever.chunks)})
         return len(new_chunks)
@@ -101,7 +126,62 @@ class RAGPipeline:
 
     # -------------------------------------------------------------------- answering
     def ask(self, question: str) -> Answer:
+        """Answer a question, with guardrails around the hallucination-proof core."""
         trace = new_trace_id()
+        gr = self.s.guardrails
+        if not gr.enabled:
+            return self._answer(question, trace)
+
+        # Input guardrails: block attacks and harmful requests, redact personal data.
+        decision = self.input_guard.check(question)
+        if decision.blocked:
+            return self._blocked(decision, trace)
+        q = decision.question
+        events = list(decision.events)
+
+        # Repeated question? Serve the already-verified answer.
+        hit = self.cache.get(q)
+        if hit is not None:
+            ans = copy.deepcopy(hit)
+            ans.trace_id, ans.cached = trace, True
+            ans.guardrails = [asdict(e) for e in events] + [asdict(GuardEvent(
+                "cache", "cached", "same question (after normalisation) was answered before"))]
+            log.info("answer.cached", extra={"question": q})
+            return ans
+
+        ans = self._answer(q, trace)
+
+        # Output guardrails: mask personal data / profanity that came from the documents.
+        if not ans.abstained:
+            ans.answer, out_events = self.output_guard.apply(ans.answer)
+            events += out_events
+        for c in ans.citations:
+            # Sentences removed by the document guardrail leave runs of spaces; tidy them.
+            c.quote, _ = self.output_guard.apply(re.sub(r" {2,}", " ", c.quote))
+        ans.guardrails = [asdict(e) for e in events]
+        self.cache.put(q, ans)
+        return ans
+
+    def _blocked(self, d, trace: str) -> Answer:
+        ev = d.blocked
+        reason = f"blocked by the {ev.guard.replace('_', ' ')} guardrail: {ev.detail}"
+        log.warning("answer.blocked", extra={"guard": ev.guard})
+        return Answer(
+            question=d.question if ev.guard != "prompt_injection" else d.question[:200],
+            answer=d.message or BLOCKED_MESSAGE,
+            abstained=True,
+            abstain_reason=reason,
+            confidence=0.0,
+            faithfulness=0.0,
+            claims=[],
+            citations=[],
+            trace_id=trace,
+            guardrails=[asdict(e) for e in d.events],
+            blocked_by=ev.guard,
+        )
+
+    def _answer(self, question: str, trace: str) -> Answer:
+        """The hallucination-proof core: retrieve, gate, generate, verify, repair, gate."""
         timings: dict[str, float] = {}
         g = self.s.guard
         log.info("question.received", extra={"question": question})
