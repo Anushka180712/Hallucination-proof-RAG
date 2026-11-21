@@ -1,0 +1,30 @@
+{"id": "a01", "question": "When was Halcyon commissioned?", "answerable": true, "must_include": ["2041"], "gold_docs": ["halcyon_station_overview"]}
+{"id": "a02", "question": "How many people are in the permanent crew?", "answerable": true, "must_include": ["9"], "gold_docs": ["halcyon_station_overview"]}
+{"id": "a03", "question": "At what altitude does the station orbit?", "answerable": true, "must_include": ["412"], "gold_docs": ["halcyon_station_overview"]}
+{"id": "a04", "question": "How often do crew rotations happen?", "answerable": true, "must_include": ["180"], "gold_docs": ["halcyon_station_overview"]}
+{"id": "a05", "question": "Which module houses the galley?", "answerable": true, "must_include": ["Atrium"], "gold_docs": ["halcyon_station_overview"]}
+{"id": "a06", "question": "How much power do the solar arrays generate?", "answerable": true, "must_include": ["240"], "gold_docs": ["power_and_life_support"]}
+{"id": "a07", "question": "What is the usable capacity of the batteries?", "answerable": true, "must_include": ["1,800"], "gold_docs": ["power_and_life_support"]}
+{"id": "a08", "question": "How many people can Breathe-2 produce oxygen for?", "answerable": true, "must_include": ["12"], "gold_docs": ["power_and_life_support"]}
+{"id": "a09", "question": "What percentage of water does the Aquifer loop recover?", "answerable": true, "must_include": ["96%"], "gold_docs": ["power_and_life_support"]}
+{"id": "a10", "question": "What crops has the Verdant program harvested?", "answerable": true, "must_include": ["wheat"], "gold_docs": ["research_programs"]}
+{"id": "a11", "question": "How long does each Lumen experiment run?", "answerable": true, "must_include": ["30 days"], "gold_docs": ["research_programs"]}
+{"id": "a12", "question": "Who is the chief scientist?", "answerable": true, "must_include": ["Okafor"], "gold_docs": ["research_programs"]}
+{"id": "a13", "question": "How many hours of emergency training must crew complete?", "answerable": true, "must_include": ["140"], "gold_docs": ["safety_procedures"]}
+{"id": "a14", "question": "Where does the crew gather during a depressurisation event?", "answerable": true, "must_include": ["Haven"], "gold_docs": ["safety_procedures"]}
+{"id": "a15", "question": "What is the maximum length of a single spacewalk?", "answerable": true, "must_include": ["7 hours"], "gold_docs": ["safety_procedures"]}
+{"id": "a16", "question": "How much can a Kestrel capsule carry?", "answerable": true, "must_include": ["3,200"], "gold_docs": ["logistics_and_cargo"]}
+{"id": "a17", "question": "How often do resupply missions arrive?", "answerable": true, "must_include": ["60 days"], "gold_docs": ["logistics_and_cargo"]}
+{"id": "a18", "question": "When was the first module launched?", "answerable": true, "must_include": ["2038"], "gold_docs": ["history"]}
+{"id": "a19", "question": "How many launches did assembly require?", "answerable": true, "must_include": ["eleven"], "gold_docs": ["history"]}
+{"id": "a20", "question": "Until when is the station expected to remain in service?", "answerable": true, "must_include": ["2060"], "gold_docs": ["history"]}
+{"id": "u01", "question": "Who is the station commander?", "answerable": false}
+{"id": "u02", "question": "What is the price of a Kestrel capsule?", "answerable": false}
+{"id": "u03", "question": "What does the Zephyr telescope observe?", "answerable": false}
+{"id": "u04", "question": "What is the name of the station's robotic arm?", "answerable": false}
+{"id": "u05", "question": "Which rocket launches the Kestrel capsules?", "answerable": false}
+{"id": "u06", "question": "How many tourists visited Halcyon in 2046?", "answerable": false}
+{"id": "u07", "question": "What is the annual budget of the Meridian Space Consortium?", "answerable": false}
+{"id": "u08", "question": "What vaccine did the Lumen program develop?", "answerable": false}
+{"id": "u09", "question": "How fast does the internet connection on Halcyon run?", "answerable": false}
+{"id": "u10", "question": "What language do the crew members speak?", "answerable": false}
