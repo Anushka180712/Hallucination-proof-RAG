@@ -35,7 +35,9 @@ _CITE_RE = re.compile(r"\[(\d+(?:\s*,\s*\d+)*)\]")
 
 def tokenize(text: str) -> list[str]:
     """Lowercase word tokens (keeps numbers like ``3.5`` and ``o'neil`` intact)."""
-    return _TOKEN_RE.findall(text.lower().replace("n't", " n't"))
+    text = text.lower().replace("\u2019", "'")
+    text = re.sub(r"'s\b", "", text)  # possessive: "halcyon's" -> "halcyon"
+    return _TOKEN_RE.findall(text.replace("n't", " n't"))
 
 
 def stem(token: str) -> str:
