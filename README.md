@@ -242,7 +242,43 @@ for claim in answer.claims:
     print(claim.verdict, claim.text, claim.reason)
 ```
 
-## 🧠 How it works
+## 🏗️ Architecture: how it works
+
+### The big picture
+
+The system has two phases. **Indexing** happens once, when documents are added. **Answering** happens for every question. Each box is one folder in [`src/hprag/`](src/hprag/), and every arrow is a plain Python call: no message queues, no hidden services.
+
+```mermaid
+flowchart TB
+    subgraph IDX["Indexing (once per document set)"]
+        direction LR
+        F[(Files in<br/>data/corpus)] --> L[ingest/loader.py<br/>read .md .txt .rst .jsonl]
+        L --> DG[guardrails<br/>DocumentGuard<br/>remove planted instructions]
+        DG --> CH[ingest/chunker.py<br/>~600-char chunks,<br/>sentence-aligned, with offsets]
+        CH --> BM[retrieval/bm25.py<br/>keyword index]
+        CH --> DE[retrieval/dense.py<br/>vector index]
+    end
+
+    subgraph ASK["Answering (every question)"]
+        direction LR
+        U([UI / CLI / API]) --> IG[guardrails<br/>InputGuard]
+        IG --> CA[guardrails<br/>QueryCache]
+        CA --> HY[retrieval/hybrid.py<br/>BM25 + vectors → RRF → rerank]
+        HY --> CF[confidence.py<br/>Gate 1]
+        CF --> GE[generation/<br/>extractive or Claude]
+        GE --> VE[verification/<br/>claims + verifier]
+        VE --> P[pipeline.py<br/>repair + Gate 2]
+        P --> OG[guardrails<br/>OutputGuard]
+        OG --> AN([Answer object:<br/>text, claims, citations,<br/>scores, trace_id])
+    end
+
+    BM -. searched by .-> HY
+    DE -. searched by .-> HY
+```
+
+[`pipeline.py`](src/hprag/pipeline.py) is the conductor: it owns no algorithm itself, it just calls each stage in order and decides what happens on failure. [`config.py`](src/hprag/config.py) holds every threshold in one place, and [`logging_utils.py`](src/hprag/logging_utils.py) gives every stage the same structured logger.
+
+### The six safety steps
 
 ```mermaid
 flowchart LR
@@ -265,6 +301,53 @@ flowchart LR
 | **4. Claim verification** | Splits the answer into single claims and checks each against the sources: supported, contradicted, or unsupported | One wrong sentence can hide inside a mostly right answer |
 | **5. Repair** | Removes unsupported claims, or asks the model to rewrite with feedback | Keep what's true, drop what isn't |
 | **6. Gate 2: faithfulness** | Blocks the answer if too much was unsupported or anything was contradicted | A clear, configurable quality bar for every answer |
+
+### The journey of one question
+
+Here is exactly what happens to *"My email is jane.doe@example.com. How long can a spacewalk last?"*, with the real log line each step writes. Run it yourself with `hprag ask "<question>" --corpus data/corpus`.
+
+**0. A trace id is assigned.** `pipeline.ask()` creates a 12-character id (`26d2a5e19c25` below). Every log line about this question carries it, so you can filter one request out of thousands. Through the API, the rate limiter has already checked this client isn't over 60 requests a minute.
+
+**1. Input guardrails** ([`guardrails/guards.py`](src/hprag/guardrails/guards.py)). The question is checked in order for: empty or oversized input, signs the person may be at risk, prompt injection, and harmful requests. Any match stops here with the rule's name. Then personal info is removed. Here, the email is stripped so it never reaches search, the logs or an AI provider.
+```
+WARN [26d2a5e19c25] guardrails        guard.pii_input  kinds=["EMAIL"]
+INFO [26d2a5e19c25] pipeline          question.received  question=How long can a spacewalk last?
+```
+
+**2. Cache.** If the same question (after normalising word order and case) was answered since the documents last changed, the stored, already-verified answer is returned (`answer.cached`). Not this time.
+
+**3. Retrieval** ([`retrieval/hybrid.py`](src/hprag/retrieval/hybrid.py)). BM25 finds chunks that share the exact words, the vector index finds chunks with similar wording, Reciprocal Rank Fusion merges the two ranked lists, and the reranker re-scores the candidates against the question. The top 5 chunks go forward.
+```
+INFO [26d2a5e19c25] retrieval.hybrid  retrieve.end  bm25_hits=1 dense_hits=7 fused=7 returned=["safety_procedures#0", ...] ms=0.72
+```
+
+**4. Gate 1: is there evidence?** ([`confidence.py`](src/hprag/confidence.py)). Confidence combines the best rerank score with how much of the question's meaning the passages cover. A question word that appears *nowhere* in the knowledge base halves the score. Below 0.35, the system refuses right here without calling any AI model.
+```
+INFO [26d2a5e19c25] guard.confidence  scored  confidence=0.9133 top=0.8267 coverage=1.0 missing=[] unknown=[]
+INFO [26d2a5e19c25] pipeline          gate1.passed  confidence=0.9133 threshold=0.35
+```
+
+**5. Generation** ([`generation/providers.py`](src/hprag/generation/providers.py)). The extractive generator copies the best-matching source sentence and cites it. With Claude, a strict grounded prompt ([`generation/prompts.py`](src/hprag/generation/prompts.py)) requires a citation on every sentence and the word `INSUFFICIENT_EVIDENCE` when unsure, and you'd also see `llm.request` and `llm.response` lines. Draft: *"A single spacewalk may not last longer than 7 hours [1]."*
+
+**6. Verification** ([`verification/`](src/hprag/verification/)). The draft is split into one claim per sentence (`claims.py`). Each claim is checked against the sources (`verifiers.py`): its key terms, numbers and negations must all match a source sentence. Each claim gets a verdict (supported, unsupported or contradicted), a score, and whether its citation actually points at the supporting source.
+```
+INFO [26d2a5e19c25] pipeline          verify.end  claims=1 hedges=0 supported=1 contradicted=0 ms=2.64
+```
+
+**7. Repair and Gate 2** ([`pipeline.py`](src/hprag/pipeline.py)). Unsupported claims are dropped (or, with `repair=regenerate`, the model rewrites with feedback). The answer is then refused if anything was contradicted, or if less than 60% of the original draft was supported. That stops an answer that was mostly made up from being shown with only its true bits.
+```
+INFO [26d2a5e19c25] pipeline          answer.returned  faithfulness=1.0 claims=1 kept=1 confidence=0.9133 retrieve=0.81 generate=0.98 verify=2.76
+```
+
+**8. Output guardrails.** Personal info or profanity that came from a *document* is masked (`guard.output`), citation quotes are tidied, and the verified answer is cached.
+
+**9. The result.** An `Answer` object ([`types.py`](src/hprag/types.py)) goes back to the UI, CLI or API. It holds the answer text, `abstained` and `abstain_reason`, `confidence`, `faithfulness`, every claim with its verdict and reason, the citations with exact character offsets into the source file, the guardrail decisions, the unverified draft, timings per stage, and the `trace_id`. Add `--json` to `hprag ask` to see all of it.
+
+A refused question writes a shorter trace that ends in the reason:
+```
+INFO [9b4ec68916d5] guard.confidence  scored  confidence=0.153 top=0.1118 coverage=0.5 missing=["commander"] unknown=["commander"]
+WARN [9b4ec68916d5] pipeline          answer.abstained  reason=retrieval confidence 0.15 < 0.35; the knowledge base never mentions: commander
+```
 
 ## 🚧 Guardrails
 
