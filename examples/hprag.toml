@@ -28,3 +28,14 @@ effort = "medium"
 
 [verifier]
 kind = "lexical"               # "nli" | "llm" | "ensemble"
+
+[guardrails]
+enabled = true
+block_injection = true         # prompt injection / jailbreak attempts
+block_unsafe = true            # weapons, cyberattacks, violence; supportive reply for self-harm
+redact_pii = true              # emails, phones, cards, SSNs, IPs in questions and answers
+mask_profanity = true
+scan_documents = true          # remove sentences in documents that try to instruct the AI
+max_question_chars = 500
+cache_size = 256               # 0 turns the verified-answer cache off
+rate_limit_per_minute = 60     # 0 turns API rate limiting off

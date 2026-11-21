@@ -50,7 +50,7 @@ class IngestRequest(BaseModel):
 def create_app(rag: RAGPipeline) -> FastAPI:
     app = FastAPI(
         title="Hallucination-Proof RAG",
-        version="1.1.0",
+        version="1.2.0",
         description="Grounded answers with citations, claim-level verification and abstention.",
     )
     # Re-indexing swaps internal state; a lock keeps /ask from reading a half-built index.

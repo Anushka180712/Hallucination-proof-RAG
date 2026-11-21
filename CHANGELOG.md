@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.0 (2026-11-21)
+
+- Guardrails, all offline: prompt-injection/jailbreak and harmful-request blocking, a supportive wellbeing
+  reply, input validation, PII redaction on questions and answers, removal of instructions hidden in
+  documents (indirect prompt injection), profanity masking, per-client API rate limiting and a cache of
+  verified answers
+- UI: guardrail banners and notes, a Guardrails panel, guardrail sample questions and a booby-trapped
+  sample document
+- `GET /guardrails` endpoint; `/health` and `/documents` report quarantined sentences
+- 28 new tests (73 total)
+
 ## 1.1.0 (2026-11-21)
 
 - Web UI (`hprag ui`): ask your own questions and see verified answers, clickable citations,

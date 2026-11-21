@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hprag"
-version = "1.1.0"
+version = "1.2.0"
 description = "Hallucination-proof RAG: grounded answers with citations, claim-level verification, and principled abstention."
 readme = "README.md"
 requires-python = ">=3.10"
