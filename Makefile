@@ -1,4 +1,4 @@
-.PHONY: install test lint eval demo serve docker
+.PHONY: install test lint eval demo ui serve docker
 
 install:
 	pip install -e ".[dev,api,anthropic]"
@@ -14,6 +14,9 @@ eval:
 
 demo:
 	hprag demo --log-level WARNING
+
+ui:
+	hprag ui
 
 serve:
 	hprag serve --corpus data/corpus --port 8000
