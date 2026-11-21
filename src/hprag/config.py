@@ -17,8 +17,8 @@ from typing import Any
 
 try:  # Python 3.11+
     import tomllib
-except ModuleNotFoundError:  # pragma: no cover - 3.10 fallback
-    tomllib = None  # type: ignore[assignment]
+except ModuleNotFoundError:  # pragma: no cover - Python 3.10 uses the identical backport
+    import tomli as tomllib  # type: ignore[no-redef]
 
 
 @dataclass
@@ -79,8 +79,6 @@ class Settings:
     def load(cls, path: str | Path | None = None, env: dict[str, str] | None = None) -> Settings:
         s = cls()
         if path:
-            if tomllib is None:  # pragma: no cover
-                raise RuntimeError("TOML config requires Python 3.11+")
             with open(path, "rb") as f:
                 _apply(s, tomllib.load(f))
         _apply_env(s, os.environ if env is None else env)
