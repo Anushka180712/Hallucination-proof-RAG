@@ -7,7 +7,12 @@ It answers questions from your own documents. Every sentence in an answer carrie
 [![CI](https://github.com/Anushka180712/Hallucination-proof-RAG/actions/workflows/ci.yml/badge.svg)](https://github.com/Anushka180712/Hallucination-proof-RAG/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
-![Tests](https://img.shields.io/badge/tests-73%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-78%20passing-brightgreen)
+[![Live demo](https://img.shields.io/badge/live%20demo-GitHub%20Pages-blue)](https://anushka180712.github.io/Hallucination-proof-RAG/)
+
+### 👉 [Try it live in your browser](https://anushka180712.github.io/Hallucination-proof-RAG/)
+
+No install and no API key. The whole pipeline runs inside your browser tab (Python compiled to WebAssembly), so nothing you type leaves your machine. The first visit takes about 10 seconds to load Python.
 
 ---
 
@@ -17,7 +22,7 @@ It answers questions from your own documents. Every sentence in an answer carrie
 2. [What's inside: the documents and the models](#-whats-inside-the-documents-and-the-models)
 3. [Quick start](#-quick-start-2-minutes-no-api-key-needed)
 4. [Questions to try, and what you should see](#-questions-to-try-and-what-you-should-see)
-5. [Other ways to run it](#-other-ways-to-run-it): your own documents, Claude, API, Docker, Python
+5. [Other ways to run it](#-other-ways-to-run-it): your own documents, Claude, API, GitHub Pages, Docker, Python
 6. [Architecture: how it works](#%EF%B8%8F-architecture-how-it-works), including [the journey of one question](#the-journey-of-one-question)
 7. [Guardrails](#-guardrails)
 8. [Reading the logs](#-reading-the-logs)
@@ -229,6 +234,29 @@ curl -s localhost:8000/ask -H 'content-type: application/json' \
 ```
 
 The web UI is at `http://localhost:8000/` and interactive API docs are at `http://localhost:8000/docs`.
+
+### Host it on GitHub Pages
+
+The [live demo](https://anushka180712.github.io/Hallucination-proof-RAG/) is this same web UI running with **no server**. GitHub Pages can only serve static files, so the page loads Python itself with [Pyodide](https://pyodide.org) (CPython compiled to WebAssembly), installs this package from a wheel, indexes `data/corpus` and answers questions in the browser tab.
+
+```mermaid
+flowchart LR
+    P[GitHub Pages<br/>static files] --> UI[index.html<br/>same UI as hprag ui]
+    UI -- "api('/ask', …)" --> BR[web/bridge.js]
+    BR --> PY[Pyodide: Python in the browser<br/>hprag.browser.BrowserApp]
+    PY --> CORE[The same pipeline:<br/>guardrails → retrieve → gates → verify]
+```
+
+| Piece | Job |
+|---|---|
+| [`web/build_site.py`](web/build_site.py) | Builds the site into `_site/`: the UI, `bridge.js`, the `hprag` wheel, the corpus and a manifest |
+| [`web/bridge.js`](web/bridge.js) | Loads Pyodide 0.29.3 and numpy, installs the wheel, indexes the documents, and routes the UI's requests to Python |
+| [`src/hprag/browser.py`](src/hprag/browser.py) | Answers those requests with the same JSON as the server (both use [`api/views.py`](src/hprag/api/views.py)) |
+| [`.github/workflows/pages.yml`](.github/workflows/pages.yml) | On every push to `main`: tests the in-browser backend, builds the site and deploys it |
+
+It runs the offline setup (extractive answers, lexical checker), because a public page can't hold an API key safely. Logs go to the browser's developer console, with the same trace ids the UI shows.
+
+**To host your own copy:** fork the repo, then go to **Settings → Pages → Build and deployment → Source** and pick **GitHub Actions**. The next push to `main` (or **Actions → Deploy to GitHub Pages → Run workflow**) publishes it at `https://<your-username>.github.io/<repo-name>/`. To preview it locally: `python web/build_site.py && python -m http.server -d _site 8000`.
 
 ### Run with Docker
 
@@ -482,7 +510,7 @@ The full event list, a complete DEBUG trace and more `jq` recipes are in **[docs
 - Structured logs (readable or JSON) with a trace id per question and timing for every stage
 - Web UI (`hprag ui`) with citations, per-statement fact-checks and highlighted sources
 - CLI (`ingest`, `ask`, `eval`, `serve`, `ui`, `demo`), REST API, Docker image, GitHub Actions CI
-- 73 tests that run offline in about a second
+- 78 tests that run offline in about a second
 - The core install needs only `numpy`
 
 ## ⚙️ Configuration
@@ -522,6 +550,8 @@ src/hprag/
 ├── evaluation/          # Metrics, harness and naive baseline
 ├── api/server.py        # FastAPI service
 ├── api/static/          # Web UI (one HTML file) and sample questions
+├── api/views.py         # The UI's JSON, shared by the server and the browser version
+├── browser.py           # Backend for the GitHub Pages version (runs in Pyodide)
 ├── cli.py               # The `hprag` command
 ├── config.py            # Every threshold, with comments
 ├── logging_utils.py     # Structured, trace-aware logging
@@ -530,7 +560,8 @@ src/hprag/
 data/corpus/             # Demo knowledge base (a fictional space station)
 data/eval/               # Labelled questions for evaluation
 docs/                    # Architecture, design decisions, logging guide
-tests/                   # 73 offline tests
+web/                     # GitHub Pages build: bridge.js and build_site.py
+tests/                   # 78 offline tests
 ```
 
 **New to the code?** Read `pipeline.py` from top to bottom. Its docstring has the whole flow, and each step calls into one folder.
@@ -569,7 +600,7 @@ Write a class with a `generate(question, hits, feedback=None) -> str` method and
 
 ```bash
 make install   # pip install -e ".[dev,api,anthropic]"
-make test      # 73 tests, offline
+make test      # 78 tests, offline
 make ui        # open the web UI
 make lint      # ruff
 make eval      # benchmark against the naive baseline
