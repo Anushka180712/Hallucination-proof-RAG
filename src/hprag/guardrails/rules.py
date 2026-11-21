@@ -26,8 +26,10 @@ INJECTION_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
         r"\b(ignore|disregard|forget|override|bypass)\b.{0,30}\b(previous|prior|above|earlier|all|your|the|any)\b"
         r".{0,20}\b(instructions?|rules?|prompts?|guidelines|directions|context)\b", _I)),
     ("reveal-prompt", re.compile(
-        r"\b(reveal|show|print|repeat|output|tell me|what (is|are))\b.{0,25}\b(your|the)\b.{0,15}"
-        r"\b(system prompt|instructions|hidden prompt|initial prompt|rules)\b", _I)),
+        # "your rules" is about the assistant; "the rules for spacewalks" is a normal question.
+        r"\b(reveal|show|print|repeat|output|tell me|what (is|are))\b.{0,25}"
+        r"\b(your (system prompt|instructions|hidden prompt|initial prompt|rules|guidelines)"
+        r"|the (system prompt|hidden prompt|initial prompt))\b", _I)),
     ("role-override", re.compile(
         r"\b(you are now|from now on,? you|act as (an? )?(unfiltered|unrestricted|evil|jailbroken)|pretend (to be|you are)"
         r"|roleplay as)\b", _I)),
