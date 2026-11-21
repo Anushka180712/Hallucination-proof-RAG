@@ -51,9 +51,10 @@ def test_sample_questions_behave_as_labelled(rag):
     from hprag.api.server import STATIC
 
     for g in json.loads((STATIC / "examples.json").read_text())["groups"]:
-        should_refuse = g["title"] == "Not in the documents"
         for q in g["questions"]:
-            assert rag.ask(q).abstained == should_refuse, q
+            a = rag.ask(q)
+            outcome = "blocked" if a.blocked_by else "refuse" if a.abstained else "answer"
+            assert outcome == g["expect"], (q, outcome, a.abstain_reason)
 
 
 def test_add_documents_keeps_existing_corpus(rag):

@@ -54,7 +54,18 @@
   .banner { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 10px; margin-bottom: 14px; }
   .banner.ok { background: var(--ok-soft); color: var(--ok); }
   .banner.warn { background: var(--warn-soft); color: var(--warn); }
+  .banner.bad { background: var(--bad-soft); color: var(--bad); }
+  .banner.care { background: var(--accent-soft); color: var(--accent); }
   .banner strong { display: block; }
+  .guard-note { display: flex; gap: 8px; font-size: 13px; padding: 8px 12px; border-radius: 8px; background: var(--bg);
+                border: 1px dashed var(--line); margin-bottom: 8px; }
+  .guard-note b { font-weight: 600; }
+  .guard-list .g { display: flex; gap: 8px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 12.5px; }
+  .guard-list .g:first-child { border-top: 0; }
+  .guard-list .name { font-weight: 600; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex: none; background: var(--ok); }
+  .dot.off { background: var(--line); }
+  .quarantine { font-size: 12px; color: var(--bad); margin-top: 6px; }
   .banner .why { color: var(--text); opacity: .85; font-size: 13px; }
   .question { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
   .answer { font-size: 17px; line-height: 1.6; margin: 0 0 14px; }
@@ -90,7 +101,9 @@
   pre.draft { white-space: pre-wrap; background: var(--bg); border-radius: 8px; padding: 10px; font-size: 13px; }
 
   aside .group { margin-bottom: 14px; }
-  aside .group-title { font-weight: 600; font-size: 13.5px; }
+  aside .group-title { font-weight: 600; font-size: 13.5px; cursor: pointer; color: var(--text); padding: 4px 0; }
+  aside details.group { border-top: 1px solid var(--line); padding-top: 6px; }
+  aside details.group:first-child { border-top: 0; padding-top: 0; }
   aside .hint { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
   .chip { display: block; width: 100%; text-align: left; background: var(--bg); color: var(--text); border: 1px solid var(--line);
           border-radius: 8px; padding: 6px 10px; margin: 4px 0; font-size: 13px; cursor: pointer; }
@@ -143,11 +156,19 @@
     </div>
 
     <div class="card" style="margin-top:20px">
+      <h2>Guardrails</h2>
+      <div class="small muted">Safety checks that run around every question and document.</div>
+      <div id="guards" class="guard-list" style="margin-top:8px">Loading…</div>
+    </div>
+
+    <div class="card" style="margin-top:20px">
       <h2>Add your own text</h2>
       <div class="small muted">Paste any text (notes, a policy, an article) and then ask about it. It's added to the knowledge base until the server restarts.</div>
       <div style="margin-top:8px"><input class="docid" id="docTitle" placeholder="Title, e.g. Refund policy"></div>
       <div style="margin-top:8px"><textarea id="docText" placeholder="Paste text here…"></textarea></div>
-      <div class="row"><button class="ghost" id="addDoc" type="button">Add to knowledge base</button><span id="docMsg" class="small muted"></span></div>
+      <div class="row"><button class="ghost" id="addDoc" type="button">Add to knowledge base</button>
+        <button class="ghost" id="sampleDoc" type="button" title="Fill in a document that hides an instruction for the AI">Try a booby-trapped document</button></div>
+      <div id="docMsg" class="small muted" style="margin-top:6px"></div>
     </div>
   </aside>
 </main>
@@ -170,7 +191,8 @@ async function loadStatus() {
   try {
     const h = await api("/health");
     const s = $("status"); s.replaceChildren();
-    s.append(el("span", "pill", `${h.chunks} passages indexed`), el("span", "pill", `answers: ${h.generator}`), el("span", "pill", `checker: ${h.verifier}`));
+    s.append(el("span", "pill", `${h.chunks} passages indexed`), el("span", "pill", `answers: ${h.generator}`), el("span", "pill", `checker: ${h.verifier}`),
+      el("span", "pill", h.guardrails ? "guardrails on" : "guardrails off"));
   } catch { $("status").replaceChildren(el("span", "pill", "server not reachable")); }
 }
 
@@ -180,16 +202,18 @@ async function loadExamples() {
   try {
     const ex = await api("/examples");
     box.replaceChildren();
-    for (const g of ex.groups) {
-      const wrap = el("div", "group");
-      wrap.append(el("div", "group-title", g.title), el("div", "hint", g.hint));
+    ex.groups.forEach((g, i) => {
+      // Collapsible groups keep the sidebar short; the first one starts open.
+      const wrap = el("details", "group"); wrap.open = i === 0;
+      const sum = el("summary", "group-title", `${g.title} (${g.questions.length})`);
+      wrap.append(sum, el("div", "hint", g.hint));
       for (const q of g.questions) {
         const b = el("button", "chip", q); b.type = "button";
-        b.onclick = () => { $("q").value = q; ask(q); };
+        b.onclick = () => { $("q").value = q; window.scrollTo({ top: 0, behavior: "smooth" }); ask(q); };
         wrap.append(b);
       }
       box.append(wrap);
-    }
+    });
   } catch { box.textContent = "Could not load sample questions."; }
 }
 
@@ -262,6 +286,14 @@ function metric(label, value, frac) {
   return m;
 }
 
+const GUARD_NAMES = {
+  prompt_injection: "Prompt injection / jailbreak", unsafe_request: "Harmful request", self_harm: "Wellbeing",
+  invalid_input: "Invalid input", pii_input: "Personal info in question", pii_output: "Personal info in answer",
+  profanity_output: "Offensive language", document_injection: "Hidden instructions in documents",
+  cache: "Answer cache", rate_limit: "Rate limit",
+};
+const GUARD_ICONS = { redacted: "🔒", cached: "⚡", quarantined: "🧹", flagged: "⚠️", blocked: "🛑" };
+
 const VERDICT = {
   supported: ["✓", "Supported by the sources"],
   unsupported: ["?", "Not found in the sources"],
@@ -270,19 +302,43 @@ const VERDICT = {
 
 function render(a) {
   const r = $("result"); r.replaceChildren();
-  r.append(el("div", "question", "Q: " + a.question));
+  const redactedQ = (a.guardrails || []).some((g) => g.guard === "pii_input");
+  r.append(el("div", "question", (redactedQ ? "Q, as searched after removing personal info: " : "Q: ") + a.question));
 
-  const banner = el("div", "banner " + (a.abstained ? "warn" : "ok"));
+  const careful = a.blocked_by === "self_harm";
+  const banner = el("div", "banner " + (careful ? "care" : a.blocked_by ? "bad" : a.abstained ? "warn" : "ok"));
   const txt = el("div");
-  if (a.abstained) {
+  const blockEvent = (a.guardrails || []).find((g) => g.action === "blocked");
+  if (careful) {
+    txt.append(el("strong", null, "You're not alone"), el("div", "why", "This message was answered with support information instead of a document search."));
+  } else if (a.blocked_by) {
+    txt.append(el("strong", null, "Blocked by a guardrail: " + (GUARD_NAMES[a.blocked_by] || a.blocked_by)),
+      el("div", "why", "What fired: " + (blockEvent ? blockEvent.detail : a.abstain_reason)),
+      el("div", "why", blockEvent ? blockEvent.explanation : ""));
+  } else if (a.abstained) {
     txt.append(el("strong", null, "Refused to answer, on purpose"), el("div", "why", "Why: " + a.abstain_reason));
   } else {
     const removed = a.claims.filter((c) => c.verdict !== "supported").length;
     txt.append(el("strong", null, "Verified answer"),
       el("div", "why", removed ? `${removed} unsupported statement(s) from the draft were removed before showing you this.` : "Every statement was checked against the sources."));
   }
-  banner.append(el("div", null, a.abstained ? "⛔" : "✅"), txt);
+  banner.append(el("div", null, careful ? "💙" : a.blocked_by ? "🛑" : a.abstained ? "⛔" : "✅"), txt);
   r.append(banner);
+
+  // Non-blocking guardrail decisions: redactions, cache hits.
+  for (const g of (a.guardrails || []).filter((x) => x.action !== "blocked")) {
+    const n = el("div", "guard-note");
+    const body = el("div");
+    body.append(el("b", null, (GUARD_NAMES[g.guard] || g.guard) + ": "), document.createTextNode(g.detail + ". "),
+      el("span", "muted", g.explanation));
+    n.append(el("span", null, GUARD_ICONS[g.action] || "ℹ️"), body);
+    r.append(n);
+  }
+  if (a.blocked_by) {
+    const p = el("p", "answer", a.answer); r.append(p);
+    r.append(el("div", "small muted", "trace id: " + a.trace_id + " (search the server logs for it)"));
+    return;
+  }
 
   const p = el("p", "answer"); renderAnswerText(a.answer, p); r.append(p);
 
@@ -332,7 +388,7 @@ function renderHistory() {
   const h = $("history"); h.replaceChildren(); h.className = "";
   for (const a of pastAnswers) {
     const item = el("div", "history-item");
-    item.append(el("span", null, a.abstained ? "⛔" : "✅"), el("span", null, a.question));
+    item.append(el("span", null, a.blocked_by ? "🛑" : a.abstained ? "⛔" : (a.cached ? "⚡" : "✅")), el("span", null, a.question));
     item.onclick = () => { $("q").value = a.question; render(a); window.scrollTo({ top: 0, behavior: "smooth" }); };
     h.append(item);
   }
@@ -346,14 +402,42 @@ $("addDoc").onclick = async () => {
   $("addDoc").disabled = true; $("docMsg").textContent = "Adding…";
   try {
     const r = await api("/documents", { documents: [{ id: title, text }] });
-    $("docMsg").textContent = `Added "${title}" (${r.chunks} passages). Ask about it now.`;
-    $("docText").value = ""; loadStatus();
+    const msg = $("docMsg"); msg.replaceChildren(document.createTextNode(`Added "${title}" (${r.chunks} passages). Ask about it now.`));
+    for (const q of r.quarantined || []) msg.append(el("div", "quarantine", "🧹 Removed a hidden instruction: " + q.split(": ").slice(1).join(": ")));
+    $("docText").value = ""; loadStatus(); loadGuards();
   } catch (err) { $("docMsg").textContent = "Error: " + err.message; }
   finally { $("addDoc").disabled = false; }
 };
 
+// ---------------------------------------------------------------- guardrails panel
+async function loadGuards() {
+  const box = $("guards");
+  try {
+    const g = await api("/guardrails");
+    box.replaceChildren();
+    for (const item of g.guardrails) {
+      const row = el("div", "g");
+      const right = el("div");
+      right.append(el("div", "name", (GUARD_NAMES[item.guard] || item.guard) + (item.active ? "" : " (off)")),
+        el("div", "muted", item.protects_against));
+      row.append(el("span", "dot" + (item.active ? "" : " off")), right);
+      box.append(row);
+    }
+    if (g.quarantined.length) box.append(el("div", "quarantine", `${g.quarantined.length} sentence(s) removed from documents so far.`));
+  } catch { box.textContent = "Could not load guardrails."; }
+}
+
+let sampleDocs = [];
+api("/examples").then((ex) => { sampleDocs = ex.sample_documents || []; }).catch(() => {});
+$("sampleDoc").onclick = () => {
+  const d = sampleDocs[0]; if (!d) return;
+  $("docTitle").value = d.title; $("docText").value = d.text;
+  $("docMsg").textContent = "This text hides two instructions for the AI. Click \"Add to knowledge base\" and watch the guardrail remove them. Then try: " + d.try.join(" · ");
+};
+
 loadStatus();
 loadExamples();
+loadGuards();
 </script>
 </body>
 </html>
