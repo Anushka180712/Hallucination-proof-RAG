@@ -180,6 +180,8 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 const pastAnswers = [];
 
 async function api(path, body) {
+  // On GitHub Pages there is no server: web/bridge.js runs the pipeline in the browser instead.
+  if (window.hpragBridge) return window.hpragBridge(path, body);
   const res = await fetch(path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {});
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.detail ? (typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail)) : res.statusText);
@@ -193,7 +195,7 @@ async function loadStatus() {
     const s = $("status"); s.replaceChildren();
     s.append(el("span", "pill", `${h.chunks} passages indexed`), el("span", "pill", `answers: ${h.generator}`), el("span", "pill", `checker: ${h.verifier}`),
       el("span", "pill", h.guardrails ? "guardrails on" : "guardrails off"));
-  } catch { $("status").replaceChildren(el("span", "pill", "server not reachable")); }
+  } catch { $("status").replaceChildren(el("span", "pill", window.hpragBridge ? "Python could not start in this browser" : "server not reachable")); }
 }
 
 // ---------------------------------------------------------------- sample questions
@@ -336,7 +338,7 @@ function render(a) {
   }
   if (a.blocked_by) {
     const p = el("p", "answer", a.answer); r.append(p);
-    r.append(el("div", "small muted", "trace id: " + a.trace_id + " (search the server logs for it)"));
+    r.append(el("div", "small muted", "trace id: " + a.trace_id + (window.hpragBridge ? " (open the browser console to see its logs)" : " (search the server logs for it)")));
     return;
   }
 
@@ -381,7 +383,7 @@ function render(a) {
   if (a.draft && a.draft.trim() !== a.answer.trim()) {
     const d = el("details"); d.append(el("summary", null, "Show the unverified draft the generator wrote"), el("pre", "draft", a.draft)); r.append(d);
   }
-  r.append(el("div", "small muted", "trace id: " + a.trace_id + " (search the server logs for it)"));
+  r.append(el("div", "small muted", "trace id: " + a.trace_id + (window.hpragBridge ? " (open the browser console to see its logs)" : " (search the server logs for it)")));
 }
 
 function renderHistory() {
