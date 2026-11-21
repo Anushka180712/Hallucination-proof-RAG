@@ -15,7 +15,7 @@ from hprag.logging_utils import configure_logging
 from hprag.pipeline import RAGPipeline
 from hprag.types import Answer, Chunk, Claim, Document, Verdict
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __all__ = ["Answer", "Chunk", "Claim", "Document", "RAGPipeline", "Settings", "Verdict",
            "configure_logging", "__version__"]
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.1.0 (2026-11-21)
+
+- Web UI (`hprag ui`): ask your own questions and see verified answers, clickable citations,
+  per-statement fact-checks, highlighted sources and refusal reasons
+- Clickable sample questions (answerable, tricky, not in the documents), checked by a test
+- Add pasted text to the knowledge base from the UI (`POST /documents`, `RAGPipeline.add_documents`)
+- Fix: irregular verbs ("began"/"begin") and possessives ("Halcyon's") no longer cause false refusals
+
 ## 1.0.0 (2026-11-21)
 
 First release.
