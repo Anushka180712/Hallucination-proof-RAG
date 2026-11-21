@@ -22,7 +22,10 @@ from hprag.logging_utils import configure_logging, get_logger
 
 log = get_logger("cli")
 DEFAULT_INDEX = ".hprag_index"
-BUNDLED_CORPUS = Path(__file__).resolve().parents[2] / "data" / "corpus"
+# Repo checkout: <repo>/src/hprag/cli.py -> <repo>/data/corpus. Falls back to ./data/corpus
+# so `hprag demo` also works from a non-editable install run inside the repo.
+_REPO_CORPUS = Path(__file__).resolve().parents[2] / "data" / "corpus"
+BUNDLED_CORPUS = _REPO_CORPUS if _REPO_CORPUS.exists() else Path("data") / "corpus"
 
 
 def _settings(args: argparse.Namespace) -> Settings:
