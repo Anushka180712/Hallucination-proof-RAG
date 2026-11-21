@@ -78,6 +78,24 @@ class RAGPipeline:
         self._verifier = None
         return len(chunks)
 
+    def add_documents(self, docs: list[Document]) -> int:
+        """Add documents to the existing index instead of replacing it.
+
+        BM25 statistics (IDF) depend on the whole corpus, so the index is rebuilt
+        from old + new chunks rather than patched; at demo/team scale this takes
+        milliseconds and keeps scores exactly consistent.
+        """
+        chunker = SentenceChunker(self.s.chunking.max_chars, self.s.chunking.overlap_sentences)
+        new_ids = {d.doc_id for d in docs}
+        # Re-adding a document with the same id replaces its old version.
+        kept = [c for c in self.retriever.chunks if c.doc_id not in new_ids]
+        new_chunks = chunker.chunk_all(docs)
+        self.retriever.build(kept + new_chunks)
+        self._verifier = None
+        log.info("documents.added", extra={"docs": len(docs), "new_chunks": len(new_chunks),
+                                           "total_chunks": len(self.retriever.chunks)})
+        return len(new_chunks)
+
     def ingest_path(self, path: str) -> int:
         return self.ingest_documents(load_directory(path))
 
