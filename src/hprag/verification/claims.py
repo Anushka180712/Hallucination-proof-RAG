@@ -15,8 +15,11 @@ from __future__ import annotations
 
 import re
 
+from hprag.logging_utils import get_logger
 from hprag.text import extract_citations, split_sentences
 from hprag.types import Claim
+
+log = get_logger("verification.claims")
 
 _HEDGE = re.compile(
     r"\b(sources?|documents?|context|provided (text|information))\b.*\b(do(es)? not|don't|doesn't|"
@@ -49,4 +52,8 @@ def decompose(answer: str) -> tuple[list[Claim], list[str]]:
             continue
         claims.append(Claim(text=text, cited=sorted(set(cited + pending))))
         pending = []
+    # Logged so a reader can see exactly which sentences were checked and which were
+    # set aside as honest hedges (hedges are never penalised; see the module docstring).
+    log.debug("claims.split", extra={"claims": len(claims), "hedges": len(hedges),
+                                     "uncited": sum(not c.cited for c in claims)})
     return claims, hedges

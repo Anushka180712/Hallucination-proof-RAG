@@ -208,6 +208,9 @@ class RAGPipeline:
             if report.unknown_terms:
                 reason += f"; the knowledge base never mentions: {', '.join(report.unknown_terms)}"
             return self._abstain(question, reason, report.confidence, hits, timings, trace)
+        # Logged on success too, so every trace shows the gate decision, not only refusals.
+        log.info("gate1.passed", extra={"confidence": report.confidence,
+                                        "threshold": g.min_retrieval_confidence})
 
         # 3. Generate --------------------------------------------------------------
         sources = [h.chunk.text for h in hits]

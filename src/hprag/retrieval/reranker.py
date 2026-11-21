@@ -76,6 +76,10 @@ class LexicalReranker:
             h.scores["rerank"] = round(self._score(q_terms, h.chunk.text), 4)
             h.score = h.scores["rerank"]
         hits.sort(key=lambda h: -h.score)
+        # Debug, not info: one line per question is enough at info level (retrieve.done).
+        # Turn on --log-level DEBUG to see why the reranker preferred one chunk over another.
+        log.debug("rerank.done", extra={"terms": q_terms, "top": [h.chunk.chunk_id for h in hits[:3]],
+                                        "scores": [h.score for h in hits[:3]]})
         return hits
 
 

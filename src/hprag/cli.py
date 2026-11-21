@@ -40,6 +40,12 @@ def _settings(args: argparse.Namespace) -> Settings:
     if args.log_format:
         s.log_format = args.log_format
     configure_logging(s.log_level, s.log_format)
+    # One line that answers "which models and thresholds was this run using?"
+    log.info("config.loaded", extra={"file": args.config or "-", "generator": s.llm.provider,
+                                     "verifier": s.verifier.kind, "embedder": s.retrieval.embedder,
+                                     "reranker": s.retrieval.reranker,
+                                     "min_confidence": s.guard.min_retrieval_confidence,
+                                     "min_faithfulness": s.guard.min_faithfulness})
     return s
 
 
@@ -233,6 +239,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> None:
     """Entry point for the `hprag` console script."""
     args = build_parser().parse_args(argv)
+    # The first line of every run names the command, so a log file is self-describing.
+    log.debug("cli.command", extra={"command": args.func.__name__.removeprefix("cmd_")})
     args.func(args)
 
 
