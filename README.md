@@ -11,6 +11,19 @@ It answers questions from your own documents. Every sentence in an answer carrie
 
 ---
 
+## 📖 Contents
+
+1. [What problem does this solve?](#-what-problem-does-this-solve) and [Results](#-results)
+2. [What's inside: the documents and the models](#-whats-inside-the-documents-and-the-models)
+3. [Quick start](#-quick-start-2-minutes-no-api-key-needed)
+4. [Questions to try, and what you should see](#-questions-to-try-and-what-you-should-see)
+5. [Other ways to run it](#-other-ways-to-run-it): your own documents, Claude, API, Docker, Python
+6. [Architecture: how it works](#%EF%B8%8F-architecture-how-it-works), including [the journey of one question](#the-journey-of-one-question)
+7. [Guardrails](#-guardrails)
+8. [Reading the logs](#-reading-the-logs)
+9. [Features](#-features), [Configuration](#%EF%B8%8F-configuration), [Project structure](#-project-structure) and [where to look for what](#where-to-look-for-what)
+10. [FAQ](#-faq) and [Development](#-development)
+
 ## 🤔 What problem does this solve?
 
 **RAG** (Retrieval-Augmented Generation) means: find the relevant passages in your documents, then ask an AI model to answer using them. It helps a lot, but models still **hallucinate**. They invent numbers, mix up facts, cite the wrong source, or answer confidently when the documents say nothing.
@@ -382,7 +395,62 @@ The rules are phrase-level, so normal questions containing words like *fire*, *k
 
 📐 Full details with more diagrams: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
 💡 The reasoning behind every choice: **[docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md)**
-🔎 Reading and using the logs: **[docs/LOGGING.md](docs/LOGGING.md)**
+🔎 Reading and using the logs: **[Reading the logs](#-reading-the-logs)** and [docs/LOGGING.md](docs/LOGGING.md)
+
+## 🔎 Reading the logs
+
+Every decision the system makes is logged, so you can always answer *"why did it say that?"* or *"why did it refuse?"* without reading code. Logs go to the terminal while `hprag ui`, `hprag ask` or `hprag serve` runs.
+
+### Anatomy of a log line
+
+```
+14:09:51 INFO [26d2a5e19c25] guard.confidence  scored  confidence=0.9133 top=0.8267 coverage=1.0 missing=[] unknown=[]
+└──┬───┘ └┬─┘ └─────┬──────┘ └──────┬───────┘  └─┬──┘  └───────────────────────┬──────────────────────────────┘
+  time  level   trace id         logger        event                   key=value fields
+```
+
+| Part | Meaning |
+|---|---|
+| **time** | When it happened (local time) |
+| **level** | `INFO` = a normal step. `WARN` = something was refused, removed or blocked. `DEBU` = fine detail, shown with `--log-level DEBUG` |
+| **trace id** | 12 characters, unique per question. `[-]` means the line isn't about one question (start-up, indexing). The API returns the same id in the `X-Trace-Id` header and the UI shows it under each answer, so a user's report can be matched to its log lines. |
+| **logger** | Which part of the code wrote it. It matches the file path: `retrieval.hybrid` is `src/hprag/retrieval/hybrid.py`. |
+| **event** | What happened, as `noun.verb` (`answer.returned`, `guard.blocked`). Events ending in `.end` come with `ms=` timing. |
+| **fields** | The facts behind the decision: scores, thresholds, which words were missing, which rule fired. |
+
+### The events worth knowing
+
+| Event | Level | What it tells you |
+|---|---|---|
+| `config.loaded` | INFO | Which generator, verifier, embedder and reranker this run uses, and both gate thresholds |
+| `question.received` | INFO | A question entered the core (after personal info was removed) |
+| `guard.pii_input` | WARN | Personal info was removed from the question. Only the *kinds* (`EMAIL`, `PHONE`) are logged, never the values. |
+| `guard.blocked` / `answer.blocked` | WARN | A guardrail refused the request. `detail` names the rule. |
+| `answer.cached` | INFO | Served from the verified-answer cache |
+| `retrieve.end` | INFO | How many chunks each search found and which ones were kept |
+| `scored` (`guard.confidence`) | INFO | Gate 1's maths: `confidence`, the words not covered (`missing`) and the words the documents never mention (`unknown`) |
+| `gate1.passed` | INFO | There was enough evidence to try answering |
+| `llm.request` / `llm.response` | INFO | Only with Claude: model, token counts, stop reason |
+| `verify.end` | INFO | How many claims were checked, supported and contradicted |
+| `repair.dropped` | WARN | **The hallucinations that were caught**: the exact sentences removed |
+| `answer.returned` | INFO | Final faithfulness and confidence, plus milliseconds per stage |
+| `answer.abstained` | WARN | The refusal and its `reason` |
+| `guard.document_quarantined` | WARN | A planted instruction was removed from a document during indexing |
+
+At `--log-level DEBUG` you also see each retrieved chunk's scores from every scorer (`hit`), the reranker's choice (`rerank.done`), how the answer was split into claims (`claims.split`) and the verdict for every single claim (`claim.checked`).
+
+### Logs for machines
+
+```bash
+hprag serve --corpus data/corpus --log-format json > app.log      # one JSON object per line
+jq 'select(.trace_id == "26d2a5e19c25")' app.log                    # everything about one question
+jq -r 'select(.event == "answer.abstained") | .reason' app.log      # why questions were refused
+jq -r 'select(.event == "repair.dropped") | .dropped[]' app.log     # every invented claim that was caught
+```
+
+A JSON line looks like `{"ts": ..., "level": "info", "logger": "hprag.pipeline", "trace_id": "2ed03b77610e", "event": "answer.returned", "faithfulness": 1.0, ...}`. Used as a library, `hprag` stays silent until you call `configure_logging()`.
+
+The full event list, a complete DEBUG trace and more `jq` recipes are in **[docs/LOGGING.md](docs/LOGGING.md)**.
 
 ## ✨ Features
 
@@ -466,6 +534,22 @@ tests/                   # 73 offline tests
 ```
 
 **New to the code?** Read `pipeline.py` from top to bottom. Its docstring has the whole flow, and each step calls into one folder.
+
+### Where to look for what
+
+| If you want to… | Open |
+|---|---|
+| Follow one question end to end | [`pipeline.py`](src/hprag/pipeline.py), `ask()` then `_answer()`. Each numbered comment is one step. |
+| Change a threshold or default model | [`config.py`](src/hprag/config.py). Every setting has a comment saying why it has that value. |
+| See why a question was refused for low evidence | [`confidence.py`](src/hprag/confidence.py) |
+| See how a claim is judged true or false | [`verification/verifiers.py`](src/hprag/verification/verifiers.py), `LexicalVerifier.score_pair()` for the word-matching rules |
+| Change the prompt Claude gets | [`generation/prompts.py`](src/hprag/generation/prompts.py) |
+| Add or tune a guardrail rule | [`guardrails/rules.py`](src/hprag/guardrails/rules.py) (patterns) and [`guardrails/guards.py`](src/hprag/guardrails/guards.py) (when they run) |
+| Change the web UI or its sample questions | [`api/static/index.html`](src/hprag/api/static/index.html) and [`api/static/examples.json`](src/hprag/api/static/examples.json) |
+| Understand a log line | [`logging_utils.py`](src/hprag/logging_utils.py) and [docs/LOGGING.md](docs/LOGGING.md) |
+| Know *why* something was built this way | [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md), 28 numbered decisions |
+
+Every module starts with a docstring explaining its job and the reasoning behind it, every public function has a docstring, and every log call has a comment saying why it's there.
 
 ## ❓ FAQ
 
