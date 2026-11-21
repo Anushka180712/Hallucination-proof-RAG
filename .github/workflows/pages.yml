@@ -1,0 +1,52 @@
+# Publishes the web UI to GitHub Pages as a static site that runs entirely in the browser.
+#
+# Why GitHub Actions and not a gh-pages branch? The site is *built* (a wheel of this
+# package, the corpus and the UI), so it shouldn't be committed. Actions builds it fresh
+# on every push to main and hands it straight to Pages.
+#
+# One-time setup in the repository: Settings > Pages > Build and deployment > Source: "GitHub Actions".
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:   # lets you redeploy by hand from the Actions tab
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two deployments at once; let a running one finish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"   # same Python version as Pyodide 0.29, which runs it in the browser
+      - name: Check the in-browser backend
+        run: |
+          pip install -e ".[dev]"
+          pytest tests/test_browser.py
+      - name: Build the static site
+        run: python web/build_site.py _site
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
