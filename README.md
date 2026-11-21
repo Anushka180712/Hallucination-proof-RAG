@@ -4,7 +4,7 @@
 
 It answers questions from your own documents. Every sentence in an answer carries a citation, every claim is fact-checked against the sources before you see it, and when the evidence is weak it says so and does not guess.
 
-[![CI](https://github.com/Anushka180712/hallucination-proof-rag/actions/workflows/ci.yml/badge.svg)](https://github.com/Anushka180712/hallucination-proof-rag/actions/workflows/ci.yml)
+[![CI](https://github.com/Anushka180712/Hallucination-proof-RAG/actions/workflows/ci.yml/badge.svg)](https://github.com/Anushka180712/Hallucination-proof-RAG/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Tests](https://img.shields.io/badge/tests-73%20passing-brightgreen)
@@ -39,10 +39,49 @@ Measured on the bundled evaluation set (20 answerable and 10 unanswerable questi
 
 The trade-off is visible on purpose. The system refused 1 of 20 answerable questions (it could not match "maximum length" to "may not last longer than" with the offline word-based checker). In exchange, it never gave a wrong answer. Turning on the neural reranker or NLI verifier (see [Configuration](#%EF%B8%8F-configuration)) closes most of that gap.
 
+## 📦 What's inside: the documents and the models
+
+### Where the knowledge base lives
+
+The demo documents are plain Markdown files in [`data/corpus/`](data/corpus/). They describe **Halcyon**, a space station that does not exist. Because every fact is invented, no AI model can know it from training, so a correct answer *has* to come from these files. That makes the demo an honest test of grounding.
+
+| File | What it covers |
+|---|---|
+| [`halcyon_station_overview.md`](data/corpus/halcyon_station_overview.md) | Commissioning date (14 March 2041), orbit, crew size (9) and rotations, the seven modules |
+| [`history.md`](data/corpus/history.md) | Planning (2034), first module Keystone (2038), assembly, the Forge module (2045), planned service life (2060) |
+| [`logistics_and_cargo.md`](data/corpus/logistics_and_cargo.md) | Kestrel cargo capsules: payload (3,200 kg), resupply every 60 days, docking port, why they aren't reusable |
+| [`power_and_life_support.md`](data/corpus/power_and_life_support.md) | Solar arrays (240 kW), batteries, Breathe-2 oxygen system, Aquifer water recycling (96%), power-failure protocol |
+| [`research_programs.md`](data/corpus/research_programs.md) | The Verdant, Lumen and Cascade research programs, and the chief scientist |
+| [`safety_procedures.md`](data/corpus/safety_procedures.md) | Emergency training, the Haven shelter, spacewalk rules (7 hours max), the open-flame ban |
+
+Other data in the repo:
+
+- [`data/eval/halcyon_qa.jsonl`](data/eval/halcyon_qa.jsonl) holds 30 labelled questions (20 answerable, 10 not) used by `hprag eval` to produce the [Results](#-results) table.
+- [`src/hprag/api/static/examples.json`](src/hprag/api/static/examples.json) holds the clickable questions in the web UI, and the "booby-trapped" sample document.
+- **No index is checked in.** It is built from the files in a few milliseconds when the app starts. `hprag ingest` saves one to `.hprag_index/` if you want to reuse it.
+
+To use your own files instead, point the app at a folder of `.md`, `.txt`, `.rst` or `.jsonl` files (see [Use your own documents](#use-your-own-documents)), or paste text into the **Add your own text** box in the UI.
+
+### Which models and components it uses
+
+**Out of the box, no AI model is downloaded and no API key is used.** Every stage has a small, transparent, offline default, and a stronger optional upgrade. Swap any of them with one setting.
+
+| Stage | Default (offline, built in) | Why this default | Optional upgrade | Setting |
+|---|---|---|---|---|
+| Keyword search | **BM25**, written from scratch in [`bm25.py`](src/hprag/retrieval/bm25.py) | The standard for exact names and numbers. No dependency. | — | always on |
+| Vector search | **Hashing embedder**: words, word pairs and character trigrams hashed into 1,024-dim vectors | Catches spelling variants with zero downloads and gives the same result every run | `sentence-transformers/all-MiniLM-L6-v2` (catches true synonyms) | `HPRAG_RETRIEVAL_EMBEDDER=sentence-transformers` |
+| Merging results | **Reciprocal Rank Fusion** (k = 60) | Merges by rank, so the two scorers' different scales don't matter | — | always on |
+| Reranker | **Lexical reranker**: IDF-weighted term coverage plus a closeness bonus | Cheap, explainable, deterministic | `cross-encoder/ms-marco-MiniLM-L-6-v2` | `HPRAG_RETRIEVAL_RERANKER=cross-encoder` |
+| Answer writer | **Extractive generator**: picks the best-matching source sentences word for word and cites them | It *cannot* invent anything, so the demo is safe without a model | **Claude** `claude-opus-5-5` (fluent, rephrased answers) | `HPRAG_LLM_PROVIDER=anthropic` |
+| Fact-checker | **Lexical verifier**: key terms, numbers, negations and opposite words must match a source sentence | Fast and strict, and catches the classic number and "not" errors | `cross-encoder/nli-deberta-v3-small` (NLI), **Claude as judge**, or an `ensemble` of all | `HPRAG_VERIFIER_KIND=nli` / `llm` / `ensemble` |
+| Guardrails | **Rule-based** (phrase patterns, regexes, Luhn check) | Offline, instant, and every block names the exact rule that fired | — | `HPRAG_GUARDRAILS_*` |
+
+The optional neural models install with `pip install -e ".[ml]"` and Claude with `pip install -e ".[anthropic]"`. Claude is called with server-side fallback, so if the main model declines a request, the API retries it on a suitable fallback model instead of failing. Whatever model writes the answer, **its output goes through the same fact-check**: a stronger model makes answers more fluent, but it is never trusted blindly. The reasoning for each choice is in [docs/DESIGN_DECISIONS.md](docs/DESIGN_DECISIONS.md).
+
 ## 🚀 Quick start (2 minutes, no API key needed)
 
 ```bash
-git clone https://github.com/Anushka180712/hallucination-proof-rag.git
+git clone https://github.com/Anushka180712/Hallucination-proof-RAG.git
 cd hallucination-proof-rag
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[api]"
