@@ -1,0 +1,30 @@
+# Example configuration. Use with: hprag ask "..." --config examples/hprag.toml
+# Every key is optional; anything left out keeps its default (see src/hprag/config.py).
+
+log_level = "INFO"
+log_format = "pretty"          # "pretty" for terminals, "json" for log pipelines
+
+[chunking]
+max_chars = 600
+overlap_sentences = 1
+
+[retrieval]
+top_k = 5
+candidate_k = 20
+embedder = "hashing"           # "sentence-transformers" with: pip install 'hprag[ml]'
+reranker = "lexical"           # "cross-encoder" with: pip install 'hprag[ml]'
+
+[guard]
+min_retrieval_confidence = 0.35
+min_claim_support = 0.55
+min_faithfulness = 0.6
+contradiction_aborts = true
+repair = "drop"                # "drop" | "regenerate" | "none"
+
+[llm]
+provider = "extractive"        # "anthropic" with ANTHROPIC_API_KEY set
+model = "claude-opus-5-5"
+effort = "medium"
+
+[verifier]
+kind = "lexical"               # "nli" | "llm" | "ensemble"
