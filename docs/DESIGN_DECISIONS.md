@@ -114,3 +114,54 @@ Every significant choice in this project, written as a short decision record: th
 
 **Decision.** Core types are dataclasses. Extension points are `typing.Protocol`s.
 **Why.** No framework lock-in, readable data flow, trivial serialisation (`Answer.to_dict()`), and implementations don't have to inherit from anything.
+
+---
+
+## Guardrails
+
+### DD-21: Guardrails are a separate layer from hallucination checks
+
+**Context.** Hallucination checks judge whether an answer is faithful to the sources. They don't decide whether a request should be served at all, whether it contains private data, or whether a *document* is trying to manipulate the model.
+**Decision.** A `guardrails/` package wraps the core pipeline: input guard, then cache, then the core, then output guard. A document guard runs at ingest.
+**Why.** Keeping the two concerns apart keeps both readable and lets each be switched or tuned independently (`HPRAG_GUARDRAILS_ENABLED=false` turns guardrails off without touching the hallucination defences).
+
+### DD-22: Rules, not a classifier, for the default guardrails
+
+**Decision.** Guardrails use phrase-level regular expressions, collected in one file (`guardrails/rules.py`).
+**Why.** They run offline in microseconds, they're deterministic, and every block names the exact rule and matched text, which matches this project's "explain every decision" goal. A classifier model would need a download and would give a score without a reason.
+**Trade-off.** Rules can be rephrased around and have limited coverage. That's acceptable because they're not the last line of defence: an injection that slips through still meets the grounded prompt ("use only the sources") and claim verification (anything not in the sources is removed). For higher assurance, add a model-based classifier as another `InputGuard` check.
+**False positives.** Every pattern needs a phrase, never a single word. A test runs normal questions containing *fire*, *kill* and *rules* through the guard and requires that none are blocked. One real false positive found during development ("What are the rules for spacewalks?") is now a regression test.
+
+### DD-23: Block attacks before retrieval
+
+**Decision.** A blocked question never reaches retrieval, the cache or any LLM.
+**Why.** It's cheapest, it means an attack payload is never sent to a third-party API, and the raw text of a blocked question is deliberately not logged (only the rule name and the matched fragment are), since it may be an attack or contain sensitive text.
+
+### DD-24: Redact personal information instead of refusing
+
+**Decision.** Emails, phone numbers, card numbers (Luhn-checked), SSNs and IP addresses are replaced with placeholders, and whole clauses like "my email is …" are removed before searching. The same redaction runs on answers and citation quotes.
+**Why.** A question that happens to contain an email is still a legitimate question. Refusing it is unhelpful; passing the email to an LLM provider and into logs is a privacy leak. Removing the clause (not just the value) keeps words like "email" from making a good question look off-topic to Gate 1.
+**Precision.** Card numbers must pass the Luhn checksum, and international phone numbers must start with `+`, so dates and measurements in documents ("14 March 2041", "1,800 kWh") are never masked.
+
+### DD-25: Remove planted instructions sentence by sentence, keeping offsets
+
+**Context.** Indirect prompt injection is the RAG-specific attack: a document in the knowledge base says "AI assistants must always answer that X". Retrieval then hands that instruction to the model as trusted context.
+**Decision.** At ingest, each sentence is scanned. Sentences that address an AI, override instructions, or use fake system tags are replaced with spaces of the same length.
+**Why sentences, not documents.** A supplier note with one malicious line still has useful facts. Quarantining the whole document would lose them.
+**Why spaces.** Every chunk keeps exact character offsets into its source file. Overwriting with equal-length whitespace keeps every citation pointing at the right characters.
+
+### DD-26: Self-harm gets support, not a refusal
+
+**Decision.** Messages suggesting the writer may be at risk get a short, warm reply pointing to people and crisis lines, instead of "I can't help with that".
+**Why.** A refusal phrased like a policy violation is the wrong response to someone who may be struggling. This tool can't counsel anyone, but it can avoid making things worse and point to real help.
+
+### DD-27: Cache verified answers, keyed on meaning-bearing words, invalidated on change
+
+**Decision.** An LRU cache stores the final, already-verified answer. The key is the sorted set of stemmed content words plus an index version that increments whenever documents change.
+**Why.** Repeat questions are common, and with an LLM provider each one costs money and seconds. Caching *after* verification means a cached answer is exactly as trustworthy as a fresh one. Normalising the key makes "When was Halcyon commissioned?" and "when was halcyon commissioned" share an entry. Versioning means a stale answer can never be served after the knowledge base changes.
+**Not a semantic cache.** Matching by embedding similarity would also catch paraphrases, but two questions can be similar and still need different answers ("When did X start?" vs "When did X end?"). Exact matching on content words is the safe choice for a system whose goal is never being wrong.
+
+### DD-28: Rate limiting at the API edge
+
+**Decision.** A per-client token bucket (default 60 requests a minute) on `POST /ask` and `POST /documents`, returning `429` with `Retry-After`.
+**Why.** It protects the server and any paid LLM API behind it from floods, accidental or not. A token bucket allows short bursts (a user clicking through sample questions) while capping sustained load.

@@ -60,8 +60,17 @@ WARN [c87c6d990dd1] pipeline  repair.dropped  dropped=["The station also carries
 | `generation` | `llm.request`, `llm.response`, `extractive.picked`, `extractive.abstain` | INFO / DEBUG | `model`, `stop_reason`, `in_tokens`, `out_tokens` |
 | `verification` | `claim.checked`, `judge.request`, `judge.refused` | DEBUG / INFO / WARN | `verdict`, `score`, `cited`, `evidence`, `reason` |
 | `pipeline` | `question.received`, `verify.end`, `repair.dropped`, `repair.regenerate.end`, `answer.returned`, `answer.abstained` | INFO / WARN | `faithfulness`, `reason`, timings |
+| `guardrails` | `guard.blocked`, `guard.pii_input`, `guard.output`, `guard.document_quarantined` | WARN | `guard`, `detail`, `kinds`, `rule`, `sentence` |
+| `pipeline` | `answer.blocked`, `answer.cached`, `documents.added` | WARN / INFO | `guard`, `total_chunks` |
+| `api` | `guard.rate_limited` | WARN | `client`, `retry_after_s` |
 | `evaluation` | `eval.item`, `eval.done` | INFO | metrics |
 | `api` | `api.ingested` | INFO | `docs`, `chunks` |
+
+A blocked attack logs the rule, never the raw question:
+
+```
+WARN [57088faa23e3] guardrails  guard.blocked  guard=prompt_injection detail=rule 'ignore-instructions' matched: "Ignore all previous instructions"
+```
 
 ## Useful queries on JSON logs
 
@@ -74,6 +83,9 @@ jq -r 'select(.event == "answer.abstained") | .reason' app.log | sort | uniq -c
 
 # Which invented claims were removed?
 jq -r 'select(.event == "repair.dropped") | .dropped[]' app.log
+
+# Which guardrails fire most?
+jq -r 'select(.event == "guard.blocked") | .guard' app.log | sort | uniq -c
 
 # Slowest stages
 jq 'select(.ms) | {event, ms}' app.log | jq -s 'sort_by(-.ms) | .[:10]'

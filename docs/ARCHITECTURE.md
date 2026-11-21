@@ -45,7 +45,8 @@ flowchart TB
 | `generation/providers.py` | Pluggable generators | `ExtractiveGenerator`, `AnthropicGenerator`, `ScriptedGenerator` |
 | `verification/claims.py` | Answer to atomic claims and hedges | `decompose` |
 | `verification/verifiers.py` | Claim checking and citation validation | `LexicalVerifier`, `NLIVerifier`, `LLMJudgeVerifier`, `EnsembleVerifier` |
-| `pipeline.py` | Orchestration, repair, **Gate 2** | `RAGPipeline.ask` |
+| `pipeline.py` | Orchestration, repair, **Gate 2**, guardrail wiring | `RAGPipeline.ask` |
+| `guardrails/` | Input, document and output guards, PII, cache, rate limiter | `InputGuard`, `DocumentGuard`, `OutputGuard`, `QueryCache`, `RateLimiter` |
 | `evaluation/` | Metrics, harness, baseline | `evaluate`, `naive_pipeline` |
 | `logging_utils.py` | Structured logs and trace ids | `configure_logging`, `stage` |
 | `config.py` | Typed settings | `Settings` |
@@ -187,11 +188,57 @@ For each source, the claim is compared with every sentence and every pair of adj
 4. **Antonyms**: "increases" vs "decreases", "before" vs "after" and similar pairs mean **contradicted**.
 5. Otherwise the claim is **supported** when its best score is at least `min_claim_support` (0.55), and **unsupported** when it is lower.
 
-## 6. Logging and observability
+## 6. Guardrails
+
+Guardrails wrap the core pipeline. Hallucination defences decide whether an *answer* is faithful; guardrails decide whether a *request* or *document* should be processed, and what must be hidden from the output.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant API as API (rate limiter)
+    participant IG as InputGuard
+    participant C as QueryCache
+    participant Core as Hallucination-proof core
+    participant OG as OutputGuard
+    U->>API: POST /ask
+    alt over the per-client limit
+        API-->>U: 429 Too Many Requests
+    end
+    API->>IG: check(question)
+    alt injection / harmful / invalid / self-harm
+        IG-->>U: blocked, with guard, rule and explanation
+    end
+    IG->>IG: redact personal info
+    IG->>C: get(clean question)
+    alt cache hit
+        C-->>U: cached verified answer
+    end
+    C->>Core: ask(clean question)
+    Core-->>OG: verified answer
+    OG->>OG: mask personal info and profanity
+    OG-->>U: answer + guardrail events
+```
+
+| Guard | Runs on | Action | Module |
+|---|---|---|---|
+| Input validation | question | block | `guardrails/guards.py` → `InputGuard` |
+| Prompt injection / jailbreak | question | block | `guardrails/rules.py` → `INJECTION_PATTERNS` |
+| Harmful requests | question | block | `UNSAFE_PATTERNS` |
+| Wellbeing | question | supportive reply | `SELF_HARM` |
+| PII | question, answer, citations | redact | `guardrails/pii.py` |
+| Hidden instructions | documents at ingest | remove the sentence, keep offsets | `DocumentGuard` |
+| Profanity | answer | mask | `OutputGuard` |
+| Cache | question | serve the verified answer | `QueryCache` |
+| Rate limit | API request | 429 | `RateLimiter` in `api/server.py` |
+
+Every decision becomes a `GuardEvent(guard, action, detail, explanation)`. Events are attached to `Answer.guardrails`, shown in the UI, and logged under the `guardrails` logger with the trace id.
+
+## 7. Logging and observability
 
 Every stage logs through `hprag.logging_utils`. Each question gets a `trace_id`, and every log line produced while answering it carries that id. Stages wrapped in `stage(...)` log a `*.start` line at DEBUG and a `*.end` line at INFO with `ms=` timing. See [LOGGING.md](LOGGING.md) for the full event list and examples.
 
-## 7. Extending the system
+## 8. Extending the system
 
 | You want to… | Do this |
 |---|---|
@@ -200,3 +247,5 @@ Every stage logs through `hprag.logging_utils`. Each question gets a `trace_id`,
 | Use a vector database | Replace `DenseIndex.build` and `DenseIndex.search` |
 | Support PDFs | Convert to text upstream, then ingest the `.txt` (see the loader docstring for why) |
 | Tune strictness | Change `GuardConfig` thresholds and measure with `hprag eval` |
+| Add a guardrail rule | Add a pattern to `guardrails/rules.py` and a positive and a negative test in `tests/test_guardrails.py` |
+| Add a model-based guardrail | Add a check in `InputGuard.check` that returns `self._block(...)` with a clear detail |
