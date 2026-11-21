@@ -1,0 +1,359 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hallucination-Proof RAG</title>
+<!--
+  Single-file UI: no build step, no external requests, served by FastAPI at "/".
+  It talks only to this server's own endpoints: /health, /examples, /ask, /documents.
+  Every piece of text from the server or the user is inserted with textContent (never
+  innerHTML), so documents you add cannot inject markup into the page.
+-->
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #5d6676; --line: #e3e6ec;
+    --accent: #3b5bdb; --accent-soft: #e8edff;
+    --ok: #1f8a4c; --ok-soft: #e6f6ec; --warn: #b4690e; --warn-soft: #fff4e2;
+    --bad: #c92a2a; --bad-soft: #ffeaea; --hl: #fff3b0;
+    --radius: 12px; --shadow: 0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #11141a; --panel: #1a1e26; --text: #e6e9ef; --muted: #9aa3b2; --line: #2b313c;
+      --accent: #7b93ff; --accent-soft: #232b45;
+      --ok: #4cc27f; --ok-soft: #17301f; --warn: #f0a845; --warn-soft: #33270f;
+      --bad: #ff6b6b; --bad-soft: #3a1a1a; --hl: #5c4f12; --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+           padding: 14px 24px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  header h1 { margin: 0; font-size: 18px; }
+  header .sub { color: var(--muted); font-size: 13px; }
+  .status { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pill { font-size: 12px; padding: 3px 10px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); white-space: nowrap; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 20px; max-width: 1240px; margin: 0 auto; padding: 20px 24px 60px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; padding: 16px; } }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+
+  form.ask { display: flex; gap: 10px; }
+  form.ask input { flex: 1; min-width: 0; font: inherit; padding: 12px 14px; border-radius: 10px;
+                   border: 1px solid var(--line); background: var(--bg); color: var(--text); }
+  form.ask input:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+  button { font: inherit; border: 0; border-radius: 10px; padding: 0 18px; background: var(--accent); color: #fff; cursor: pointer; }
+  button:disabled { opacity: .55; cursor: progress; }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--line); padding: 6px 12px; }
+
+  .result { margin-top: 16px; }
+  .banner { display: flex; gap: 10px; align-items: flex-start; padding: 12px 14px; border-radius: 10px; margin-bottom: 14px; }
+  .banner.ok { background: var(--ok-soft); color: var(--ok); }
+  .banner.warn { background: var(--warn-soft); color: var(--warn); }
+  .banner strong { display: block; }
+  .banner .why { color: var(--text); opacity: .85; font-size: 13px; }
+  .question { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .answer { font-size: 17px; line-height: 1.6; margin: 0 0 14px; }
+  .cite { display: inline-block; font-size: 11px; font-weight: 600; padding: 0 6px; margin: 0 1px; border-radius: 6px;
+          background: var(--accent-soft); color: var(--accent); cursor: pointer; vertical-align: 2px; border: 0; }
+  .metrics { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+  .metric { flex: 1 1 120px; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+  .metric .v { font-size: 18px; font-weight: 600; }
+  .metric .k { font-size: 12px; color: var(--muted); }
+  .bar { height: 4px; background: var(--line); border-radius: 4px; margin-top: 6px; overflow: hidden; }
+  .bar > span { display: block; height: 100%; background: var(--accent); }
+
+  h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 18px 0 8px; }
+  .claim { display: grid; grid-template-columns: 22px 1fr; gap: 8px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .claim:first-of-type { border-top: 0; }
+  .icon { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 700; }
+  .icon.supported { background: var(--ok-soft); color: var(--ok); }
+  .icon.unsupported { background: var(--warn-soft); color: var(--warn); }
+  .icon.contradicted { background: var(--bad-soft); color: var(--bad); }
+  .claim .reason { font-size: 12.5px; color: var(--muted); }
+  .tag { font-size: 11px; padding: 1px 7px; border-radius: 6px; margin-left: 6px; }
+  .tag.removed { background: var(--warn-soft); color: var(--warn); }
+  .tag.badcite { background: var(--bad-soft); color: var(--bad); }
+
+  .source { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; transition: box-shadow .2s; }
+  .source.flash { box-shadow: 0 0 0 3px var(--accent); }
+  .source .head { font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
+  .source .num { font-weight: 700; color: var(--accent); margin-right: 6px; }
+  .source .body { font-size: 14px; white-space: pre-wrap; }
+  mark { background: var(--hl); color: inherit; border-radius: 3px; padding: 0 1px; }
+  details { margin-top: 12px; }
+  summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+  pre.draft { white-space: pre-wrap; background: var(--bg); border-radius: 8px; padding: 10px; font-size: 13px; }
+
+  aside .group { margin-bottom: 14px; }
+  aside .group-title { font-weight: 600; font-size: 13.5px; }
+  aside .hint { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .chip { display: block; width: 100%; text-align: left; background: var(--bg); color: var(--text); border: 1px solid var(--line);
+          border-radius: 8px; padding: 6px 10px; margin: 4px 0; font-size: 13px; cursor: pointer; }
+  .chip:hover { border-color: var(--accent); }
+  textarea, input.docid { width: 100%; font: inherit; font-size: 13px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line);
+                          background: var(--bg); color: var(--text); }
+  textarea { min-height: 110px; resize: vertical; }
+  .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+  .history-item { padding: 8px 0; border-top: 1px solid var(--line); cursor: pointer; font-size: 13.5px; display: flex; gap: 8px; }
+  .history-item:first-child { border-top: 0; }
+  .empty { text-align: center; padding: 30px 10px; color: var(--muted); }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line); border-top-color: var(--accent);
+             border-radius: 50%; animation: spin .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error { color: var(--bad); font-size: 13px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>🛡️ Hallucination-Proof RAG</h1>
+    <div class="sub">Every answer is cited and fact-checked. If the documents don't say it, it won't either.</div>
+  </div>
+  <div class="status" id="status"><span class="pill">connecting…</span></div>
+</header>
+
+<main>
+  <section>
+    <div class="card">
+      <form class="ask" id="askForm" autocomplete="off">
+        <input id="q" placeholder="Ask a question about the documents…" maxlength="2000" autofocus>
+        <button id="askBtn" type="submit">Ask</button>
+      </form>
+      <div id="error" class="error" hidden></div>
+      <div id="result" class="result">
+        <div class="empty">Type a question above, or pick one from the list on the right.</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:20px">
+      <h2>Your questions this session</h2>
+      <div id="history" class="small muted">Nothing yet.</div>
+    </div>
+  </section>
+
+  <aside>
+    <div class="card">
+      <h2>Try these questions</h2>
+      <div id="examples" class="small muted">Loading…</div>
+    </div>
+
+    <div class="card" style="margin-top:20px">
+      <h2>Add your own text</h2>
+      <div class="small muted">Paste any text (notes, a policy, an article) and then ask about it. It's added to the knowledge base until the server restarts.</div>
+      <div style="margin-top:8px"><input class="docid" id="docTitle" placeholder="Title, e.g. Refund policy"></div>
+      <div style="margin-top:8px"><textarea id="docText" placeholder="Paste text here…"></textarea></div>
+      <div class="row"><button class="ghost" id="addDoc" type="button">Add to knowledge base</button><span id="docMsg" class="small muted"></span></div>
+    </div>
+  </aside>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+const pastAnswers = [];
+
+async function api(path, body) {
+  const res = await fetch(path, body ? { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) } : {});
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.detail ? (typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail)) : res.statusText);
+  return data;
+}
+
+// ---------------------------------------------------------------- header status
+async function loadStatus() {
+  try {
+    const h = await api("/health");
+    const s = $("status"); s.replaceChildren();
+    s.append(el("span", "pill", `${h.chunks} passages indexed`), el("span", "pill", `answers: ${h.generator}`), el("span", "pill", `checker: ${h.verifier}`));
+  } catch { $("status").replaceChildren(el("span", "pill", "server not reachable")); }
+}
+
+// ---------------------------------------------------------------- sample questions
+async function loadExamples() {
+  const box = $("examples");
+  try {
+    const ex = await api("/examples");
+    box.replaceChildren();
+    for (const g of ex.groups) {
+      const wrap = el("div", "group");
+      wrap.append(el("div", "group-title", g.title), el("div", "hint", g.hint));
+      for (const q of g.questions) {
+        const b = el("button", "chip", q); b.type = "button";
+        b.onclick = () => { $("q").value = q; ask(q); };
+        wrap.append(b);
+      }
+      box.append(wrap);
+    }
+  } catch { box.textContent = "Could not load sample questions."; }
+}
+
+// ---------------------------------------------------------------- asking
+$("askForm").addEventListener("submit", (e) => { e.preventDefault(); const q = $("q").value.trim(); if (q) ask(q); });
+
+async function ask(question) {
+  $("error").hidden = true;
+  $("askBtn").disabled = true;
+  const r = $("result"); r.replaceChildren();
+  const loading = el("div", "empty"); loading.append(el("span", "spinner"), document.createTextNode("Retrieving, answering and fact-checking…"));
+  r.append(loading);
+  try {
+    const a = await api("/ask", { question });
+    pastAnswers.unshift(a); renderHistory(); render(a);
+  } catch (err) {
+    r.replaceChildren(el("div", "empty", "No answer."));
+    $("error").textContent = "Error: " + err.message; $("error").hidden = false;
+  } finally { $("askBtn").disabled = false; }
+}
+
+// Split the answer into text and clickable [n] citation chips.
+function renderAnswerText(text, container) {
+  const re = /\[(\d+(?:\s*,\s*\d+)*)\]/g;
+  let last = 0, m;
+  while ((m = re.exec(text))) {
+    container.append(document.createTextNode(text.slice(last, m.index)));
+    for (const n of m[1].split(",").map((x) => x.trim())) {
+      const c = el("button", "cite", n); c.type = "button"; c.title = "Show source " + n;
+      c.onclick = () => flashSource(n); container.append(c);
+    }
+    last = re.lastIndex;
+  }
+  container.append(document.createTextNode(text.slice(last)));
+}
+
+function flashSource(n) {
+  const s = document.querySelector(`[data-source="${n}"]`);
+  if (!s) return;
+  s.scrollIntoView({ behavior: "smooth", block: "center" });
+  s.classList.add("flash"); setTimeout(() => s.classList.remove("flash"), 1200);
+}
+
+const words = (t) => (t.toLowerCase().match(/[a-z0-9%]+/g) || []).filter((w) => w.length > 2);
+
+// Highlight the sentences of a source that a supported claim relies on.
+function highlightedBody(text, claims) {
+  const body = el("div", "body");
+  const matches = (sent) => {
+    if (sent.trim().startsWith("#")) return false;  // never highlight markdown headings
+    const sw = new Set(words(sent));
+    return claims.some((c) => { const cw = words(c); return cw.length && cw.filter((w) => sw.has(w)).length / cw.length >= 0.6; });
+  };
+  // Keep line breaks as they are; split each line into sentences.
+  for (const part of text.split(/(\n+)/)) {
+    if (/^\n+$/.test(part)) { body.append(document.createTextNode(part)); continue; }
+    const sentences = part.split(/(?<=[.!?])\s+/);
+    sentences.forEach((sent, i) => {
+      body.append(matches(sent) ? el("mark", null, sent) : document.createTextNode(sent));
+      if (i < sentences.length - 1) body.append(document.createTextNode(" "));
+    });
+  }
+  return body;
+}
+
+function metric(label, value, frac) {
+  const m = el("div", "metric");
+  m.append(el("div", "v", value), el("div", "k", label));
+  if (frac != null) { const b = el("div", "bar"); const s = el("span"); s.style.width = Math.round(frac * 100) + "%"; b.append(s); m.append(b); }
+  return m;
+}
+
+const VERDICT = {
+  supported: ["✓", "Supported by the sources"],
+  unsupported: ["?", "Not found in the sources"],
+  contradicted: ["✕", "Contradicted by the sources"],
+};
+
+function render(a) {
+  const r = $("result"); r.replaceChildren();
+  r.append(el("div", "question", "Q: " + a.question));
+
+  const banner = el("div", "banner " + (a.abstained ? "warn" : "ok"));
+  const txt = el("div");
+  if (a.abstained) {
+    txt.append(el("strong", null, "Refused to answer, on purpose"), el("div", "why", "Why: " + a.abstain_reason));
+  } else {
+    const removed = a.claims.filter((c) => c.verdict !== "supported").length;
+    txt.append(el("strong", null, "Verified answer"),
+      el("div", "why", removed ? `${removed} unsupported statement(s) from the draft were removed before showing you this.` : "Every statement was checked against the sources."));
+  }
+  banner.append(el("div", null, a.abstained ? "⛔" : "✅"), txt);
+  r.append(banner);
+
+  const p = el("p", "answer"); renderAnswerText(a.answer, p); r.append(p);
+
+  const ms = Object.values(a.timings_ms || {}).reduce((x, y) => x + y, 0);
+  const metrics = el("div", "metrics");
+  metrics.append(
+    metric("Retrieval confidence", Math.round(a.confidence * 100) + "%", a.confidence),
+    metric("Statements verified", a.claims.length ? Math.round(a.faithfulness * 100) + "%" : "—", a.claims.length ? a.faithfulness : null),
+    metric("Time", ms ? ms.toFixed(0) + " ms" : "—"),
+  );
+  r.append(metrics);
+
+  if (a.claims.length) {
+    r.append(el("h3", null, "Fact-check, statement by statement"));
+    for (const c of a.claims) {
+      const row = el("div", "claim");
+      const [sym, label] = VERDICT[c.verdict] || ["?", c.verdict];
+      const ic = el("div", "icon " + c.verdict, sym); ic.title = label; row.append(ic);
+      const right = el("div");
+      const line = el("div", null, c.text);
+      if (c.verdict !== "supported" && !a.abstained) line.append(el("span", "tag removed", "removed"));
+      if (c.verdict === "supported" && c.cited.length && !c.citation_valid) line.append(el("span", "tag badcite", "cited the wrong source; fixed"));
+      right.append(line, el("div", "reason", `${label}. ${c.reason}`));
+      row.append(right); r.append(row);
+    }
+  }
+
+  if (a.citations.length) {
+    r.append(el("h3", null, a.abstained ? "Closest passages found (not enough to answer)" : "Sources"));
+    const supported = a.claims.filter((c) => c.verdict === "supported").map((c) => c.text);
+    for (const c of a.citations) {
+      const s = el("div", "source"); s.dataset.source = c.number;
+      const head = el("div", "head"); head.append(el("span", "num", `[${c.number}]`), document.createTextNode(`${c.doc_id} · characters ${c.start}–${c.end}`));
+      const quote = a.abstained && c.end - c.start > c.quote.length ? c.quote.trimEnd() + "…" : c.quote;
+      s.append(head, a.abstained ? el("div", "body", quote) : highlightedBody(quote, supported));
+      r.append(s);
+    }
+  }
+
+  if (a.draft && a.draft.trim() !== a.answer.trim()) {
+    const d = el("details"); d.append(el("summary", null, "Show the unverified draft the generator wrote"), el("pre", "draft", a.draft)); r.append(d);
+  }
+  r.append(el("div", "small muted", "trace id: " + a.trace_id + " (search the server logs for it)"));
+}
+
+function renderHistory() {
+  const h = $("history"); h.replaceChildren(); h.className = "";
+  for (const a of pastAnswers) {
+    const item = el("div", "history-item");
+    item.append(el("span", null, a.abstained ? "⛔" : "✅"), el("span", null, a.question));
+    item.onclick = () => { $("q").value = a.question; render(a); window.scrollTo({ top: 0, behavior: "smooth" }); };
+    h.append(item);
+  }
+}
+
+// ---------------------------------------------------------------- add a document
+$("addDoc").onclick = async () => {
+  const text = $("docText").value.trim();
+  const title = $("docTitle").value.trim() || "my-document";
+  if (!text) { $("docMsg").textContent = "Paste some text first."; return; }
+  $("addDoc").disabled = true; $("docMsg").textContent = "Adding…";
+  try {
+    const r = await api("/documents", { documents: [{ id: title, text }] });
+    $("docMsg").textContent = `Added "${title}" (${r.chunks} passages). Ask about it now.`;
+    $("docText").value = ""; loadStatus();
+  } catch (err) { $("docMsg").textContent = "Error: " + err.message; }
+  finally { $("addDoc").disabled = false; }
+};
+
+loadStatus();
+loadExamples();
+</script>
+</body>
+</html>

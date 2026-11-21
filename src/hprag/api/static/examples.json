@@ -1,0 +1,48 @@
+{
+  "corpus": "Halcyon Orbital Station (fictional demo knowledge base)",
+  "groups": [
+    {
+      "title": "Answerable",
+      "hint": "The documents contain the answer, so you get it with a citation.",
+      "questions": [
+        "When was Halcyon commissioned?",
+        "How many people are in the permanent crew?",
+        "How much power do the solar arrays generate?",
+        "What percentage of water does the Aquifer loop recover?",
+        "Who is the chief scientist?",
+        "Where does the crew gather during a depressurisation event?",
+        "How long can a spacewalk last?",
+        "How much can a Kestrel capsule carry?",
+        "How often do resupply missions arrive?",
+        "What crops has the Verdant program harvested?",
+        "Which module is the largest?",
+        "When did planning for Halcyon begin?"
+      ]
+    },
+    {
+      "title": "Tricky but answerable",
+      "hint": "These need negations or details read exactly.",
+      "questions": [
+        "Are open flames allowed on the station?",
+        "What happens if both solar arrays fail?",
+        "Are Kestrel capsules reusable?",
+        "How do Lumen samples survive re-entry?",
+        "What is Breathe-2?",
+        "How many launches did assembly take?"
+      ]
+    },
+    {
+      "title": "Not in the documents",
+      "hint": "The right behaviour is to refuse instead of inventing an answer.",
+      "questions": [
+        "Who is the station commander?",
+        "What is the price of a Kestrel capsule?",
+        "What does the Zephyr telescope observe?",
+        "How many tourists visited Halcyon in 2046?",
+        "Which rocket launches the Kestrel capsules?",
+        "Does Halcyon have a swimming pool?",
+        "What is the capital of France?"
+      ]
+    }
+  ]
+}
