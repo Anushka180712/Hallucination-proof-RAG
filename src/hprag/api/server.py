@@ -16,21 +16,19 @@ in the logs, so a user's bug report can be tied to the exact log lines.
 
 from __future__ import annotations
 
-import json
 import threading
-from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
-from hprag.guardrails import EXPLANATIONS, RateLimiter
+from hprag.api import views
+from hprag.api.views import STATIC
+from hprag.guardrails import RateLimiter
 from hprag.logging_utils import get_logger
 from hprag.pipeline import RAGPipeline
-from hprag.types import Document
 
 log = get_logger("api")
-STATIC = Path(__file__).parent / "static"
 
 
 class AskRequest(BaseModel):
@@ -84,31 +82,17 @@ def create_app(rag: RAGPipeline) -> FastAPI:
     @app.get("/examples")
     def examples() -> dict:
         """Return the grouped sample questions shown in the UI (and checked by a test)."""
-        return json.loads((STATIC / "examples.json").read_text(encoding="utf-8"))
+        return views.examples()
 
     @app.get("/health")
     def health() -> dict:
         """Liveness probe plus a summary of what the server is running with."""
-        return {"status": "ok", "chunks": len(rag.retriever.chunks),
-                "generator": rag.generator.name, "verifier": rag.verifier.name,
-                "guardrails": gr.enabled, "quarantined": len(rag.quarantined)}
+        return views.health(rag)
 
     @app.get("/guardrails")
     def guardrails() -> dict:
         """List every guardrail, whether it is on, and what it protects against."""
-        active = {
-            "prompt_injection": gr.block_injection, "unsafe_request": gr.block_unsafe,
-            "self_harm": gr.block_unsafe, "invalid_input": True, "pii_input": gr.redact_pii,
-            "pii_output": gr.redact_pii, "profanity_output": gr.mask_profanity,
-            "document_injection": gr.scan_documents, "cache": gr.cache_size > 0,
-        }
-        items = [{"guard": k, "active": gr.enabled and v, "protects_against": EXPLANATIONS[k]}
-                 for k, v in active.items()]
-        items.append({"guard": "rate_limit", "active": gr.enabled and gr.rate_limit_per_minute > 0,
-                      "protects_against": f"Stops one client from flooding the server: at most "
-                                          f"{gr.rate_limit_per_minute} requests per minute."})
-        return {"enabled": gr.enabled, "guardrails": items,
-                "quarantined": [e.detail for e in rag.quarantined]}
+        return views.guardrails(rag)
 
     @app.post("/ask")
     def ask(req: AskRequest, request: Request):
@@ -124,18 +108,14 @@ def create_app(rag: RAGPipeline) -> FastAPI:
     def add_documents(req: IngestRequest, request: Request) -> dict:
         """Add documents to the existing index (same id replaces the old version)."""
         check_rate(request)
-        docs = [Document(doc_id=d.id, text=d.text, metadata={"title": d.id, **d.metadata})
-                for d in req.documents]
+        docs = views.to_documents([d.model_dump() for d in req.documents])
         with lock:
-            n = rag.add_documents(docs)
-        return {"documents": len(docs), "chunks": n, "total_chunks": len(rag.retriever.chunks),
-                "quarantined": [e.detail for e in rag.last_quarantined]}
+            return views.add_documents(rag, docs)
 
     @app.post("/ingest")
     def ingest(req: IngestRequest) -> dict:
         """Replace the whole index with the given documents."""
-        docs = [Document(doc_id=d.id, text=d.text, metadata={"title": d.id, **d.metadata})
-                for d in req.documents]
+        docs = views.to_documents([d.model_dump() for d in req.documents])
         with lock:
             n = rag.ingest_documents(docs)
         log.info("api.ingested", extra={"docs": len(docs), "chunks": n})
