@@ -39,3 +39,8 @@ def test_negation_and_query_terms():
     assert not has_negation("Flames are permitted")
     assert "many" not in query_terms("How many crew members?")
     assert "crew" in content_terms("How many crew members?")
+
+
+def test_irregular_verbs_share_a_stem():
+    assert stem("began") == stem("begin") == "begin"
+    assert stem("led") == "lead"

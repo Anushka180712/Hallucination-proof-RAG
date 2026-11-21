@@ -40,6 +40,21 @@ def tokenize(text: str) -> list[str]:
     return _TOKEN_RE.findall(text.replace("n't", " n't"))
 
 
+# Irregular verb forms a suffix stripper can't handle. Without this, "When did planning
+# begin?" never matches "planning began", and "begin" looks like an unknown term.
+IRREGULAR = {
+    "began": "begin", "begun": "begin", "built": "build", "led": "lead", "grew": "grow",
+    "grown": "grow", "ran": "run", "took": "take", "taken": "take", "gave": "give",
+    "given": "give", "wrote": "write", "written": "write", "found": "find", "held": "hold",
+    "left": "leave", "met": "meet", "paid": "pay", "sold": "sell", "told": "tell", "saw": "see",
+    "seen": "see", "knew": "know", "known": "know", "chose": "choose", "chosen": "choose",
+    "flew": "fly", "flown": "fly", "rose": "rise", "risen": "rise", "fell": "fall",
+    "fallen": "fall", "brought": "bring", "bought": "buy", "thought": "think", "kept": "keep",
+    "spent": "spend", "sent": "send", "won": "win", "lost": "lose", "drove": "drive",
+    "driven": "drive", "ate": "eat", "eaten": "eat", "broke": "break", "broken": "break",
+}
+
+
 def stem(token: str) -> str:
     """A tiny suffix-stripping stemmer.
 
@@ -47,6 +62,8 @@ def stem(token: str) -> str:
     It is deliberately conservative: over-stemming creates false matches, and
     false matches are exactly what turns into undetected hallucinations.
     """
+    if token in IRREGULAR:
+        return IRREGULAR[token]
     if len(token) <= 3 or token.isdigit():
         return token
     for suf in ("ization", "ations", "ation", "ingly", "edly", "ing", "ies", "ied", "es", "ed", "ly", "s"):
